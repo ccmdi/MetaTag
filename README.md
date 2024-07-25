@@ -9,15 +9,15 @@ This is a tool designed to take simple latitude/longitude JSON's and add various
 	* Country
 	* State
 	* Locality
-	* ~~Population
-	* ~~Population density
+	* ~~Population~~
+	* ~~Population density~~
 * Terrestrial data
 	* Solar azimuth (direction)
 	* Solar altitude (height)
-	* ~~Cloud cover
-	* ~~Precipitation
-	* ~~Snow depth
-	* ~~Elevation
+	* ~~Cloud cover~~
+	* ~~Precipitation~~
+	* ~~Snow depth~~
+	* ~~Elevation~~
 * Driving direction
 
 The underlying script works around the `maps` folder; the paths can be configured in [config.json](https://github.com/ccmdi/MetaTag/blob/main/config.json). `maps/base` is a convenient folder to store all maps you work with, however you can run the script from anywhere. For any map you wish to tag, there are two options:
@@ -55,4 +55,4 @@ If you are running `metatag.py`, this is the list of arguments that are presentl
 * `-t --tagged` Associated tagged file(s)
 * `-c --cascade` All associated files
  
-<p style="font-size: 12px"> Inspired by <a href="https://github.com/macca7224/sv-date-analyser" target="_blank">this project</a> by macca7224. </p>
+Inspired by [this project](https://github.com/macca7224/sv-date-analyser) by macca7224.
