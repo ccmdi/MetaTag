@@ -22,8 +22,8 @@ from tqdm import tqdm
 from sv_map import SVMap, Classifier
 from get_date import find_accurate_timestamp
 
-CONFIG = json.load(open('config.json', 'r'))
 FILE = Path(__file__).parent
+CONFIG = json.load(open(FILE / 'config.json', 'r'))
 FOLDERS = {
     'base': {
         'path': (FILE / CONFIG['path']['base']).resolve(),
@@ -71,7 +71,7 @@ class ArgParser:
         if self.args.command == 'tag':
             self.cached_file = (FOLDERS['meta']['path'] / self.filepath.name).absolute()
             if self.cached_file.exists() and not self.args.no_cache_in:
-                print("Found cached meta-maps file")
+                print("Found cached file")
                 self.cached = True
             else:
                 self.cached = False
@@ -102,6 +102,7 @@ class ArgParser:
         self.add_argument(parser, '-c', '--locality', action='store_true', group='geographical')
         self.add_argument(parser, '-s','--solar', action='store_true', group='terrestrial')
         self.add_argument(parser, '-S','--SOLAR', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-w','--weather', action='store_true', group='terrestrial')
         self.add_argument(parser, '--heading', type=str, default=None, help='Update heading; orient towards object i.e. solar', group='terrestrial')
         self.add_argument(parser, '-drivingdirection', action='store_true', help='Update driving direction', group='terrestrial')
 
@@ -125,13 +126,21 @@ class ArgParser:
     
 
 class MetaTag:
-    def __init__(self, file, arg_parser): 
+    """
+    Class for handling tagging of SVMap metadata.
+    """
+
+    def __init__(self, map_obj, arg_parser): 
         self.arg_parser = arg_parser
         self.args = arg_parser.args
-        self.file = file
+        self.map = map_obj
 
         self.start_time = time.time()
-        self.dates, self.altitudes, self.azimuths = set(), set(), set()
+        self.attr_sets = {
+            'dates': set(),
+            'altitudes': set(),
+            'azimuths': set()
+        }
         
         self.tf = TimezoneFinder()
         self.datestring = self.datestring()
@@ -143,11 +152,14 @@ class MetaTag:
         self.metatag()
 
     def metatag(self):
+        """
+        Performs JSON tagging.
+        """
         try:
             now = dt.now().timestamp()
 
             # Data processing
-            for i, item in enumerate(self.file['customCoordinates']):
+            for i, item in enumerate(self.map.locs):
                 try:
                     # Comprehension
                     lat = float(item['lat'])
@@ -187,7 +199,7 @@ class MetaTag:
                     tags = []
                     if self.arg_parser.group_true('temporal'):
                         tags.append(timestamp)
-                        self.dates.add(timestamp)
+                        self.attr_sets['dates'].add(timestamp)
                     if self.arg_parser.group_true('geographical'):
                         if self.args.country:
                             tags.append(country)
@@ -196,14 +208,13 @@ class MetaTag:
                         if self.args.locality:
                             tags.append(locality)
                     if self.args.drivingdirection:
-                        #print(float(item['drivingDirection']))
                         tags.append(Classifier.direction(driving_direction))
                     if self.args.solar:
                         tags.extend(["#"+str(altitude_class), "@"+str(azimuth_class), sun_event])
                     if self.args.SOLAR:
                         tags.extend([str(altitude)+" #", str(azimuth)+" @"])
-                        self.altitudes.add(altitude+" #")
-                        self.azimuths.add(azimuth +" @")
+                        self.attr_sets['altitudes'].add(altitude+" #")
+                        self.attr_sets['azimuths'].add(azimuth +" @")
 
                     # Prune empty tags
                     tags = [tag for tag in tags if tag]
@@ -230,14 +241,14 @@ class MetaTag:
                     print(e)
 
             if self.arg_parser.group_true('temporal'):
-                sorted_dates = self.order_tags(self.dates)
+                sorted_dates = self.order_tags(self.attr_sets['dates'])
                 self.offset += sorted_dates[2]
                 print("Datetime span:", sorted_dates[0], "to", sorted_dates[1])
 
             if self.args.SOLAR:
-                sorted_altitude = self.order_tags(self.altitudes, sortby='solar')
+                sorted_altitude = self.order_tags(self.attr_sets['altitudes'], sortby='solar')
                 self.offset += sorted_altitude[2]
-                sorted_azimuth = self.order_tags(self.azimuths, sortby='solar')
+                sorted_azimuth = self.order_tags(self.attr_sets['azimuths'], sortby='solar')
                 self.offset += sorted_azimuth[2]
 
         except Exception as e:
@@ -245,6 +256,18 @@ class MetaTag:
             exit(1)
 
     def tz_datestring(self, lat, lng, unix_time, roundt=False):
+        """
+        Generates a timezone-aware date string.
+
+        Args:
+            lat (float): The latitude.
+            lng (float): The longitude.
+            unix_time (float): The UNIX timestamp.
+            roundt (bool): Whether to round the time.
+
+        Returns:
+            str: The generated date string.
+        """
         timezone_str = self.tf.timezone_at(lng=lng, lat=lat) if self.args.time else None
         if timezone_str:
             q = dt.fromtimestamp(unix_time, pytz.timezone(timezone_str))
@@ -262,6 +285,12 @@ class MetaTag:
         return q.strftime(self.datestring if self.datestring else '%Y-%m-%d %H:%M')
 
     def datestring(self):
+        """
+        Returns the appropriate date format string.
+
+        Returns:
+            str: The date format string.
+        """
         if self.args.time and not self.args.date:
             return '%H:%M'
         elif self.args.date and not self.args.time:
@@ -276,10 +305,20 @@ class MetaTag:
             return None
 
     def order_tags(self, attribute_set, sortby='date'):
-        if 'extra' not in self.file:
-            self.file['extra'] = {}
-        if 'tags' not in self.file['extra']:
-            self.file['extra']['tags'] = {}
+        """
+        Orders the tags based on the specified attribute set and sort order.
+
+        Args:
+            attribute_set (set): The set of attributes to be ordered.
+            sortby (str): The sort order ('date' or 'solar').
+
+        Returns:
+            list: A list containing the start value, end value, and offset.
+        """
+        if 'extra' not in self.map.data:
+            self.map.data['extra'] = {}
+        if 'tags' not in self.map.data['extra']:
+            self.map.data['extra']['tags'] = {}
         
         if sortby == 'date':
             sli = sorted(list(attribute_set), key=lambda i: dt.strptime(i, self.datestring) if self.datestring else i)
@@ -289,12 +328,10 @@ class MetaTag:
         end = sli[-1]
         i = 0 if self.offset == 0 else 1
 
-        # print(sli)
-
         for i, item in enumerate(sli):
-            self.file["extra"]["tags"][item] = {"order": i+self.offset}
+            self.map.data["extra"]["tags"][item] = {"order": i+self.offset}
             color_scale = [int(start + (end - start) * (i / len(sli))) for start, end in zip(self.color2, self.color)]
-            self.file["extra"]["tags"][item]['color'] = color_scale
+            self.map.data["extra"]["tags"][item]['color'] = color_scale
         return [start,end,i]
 
 class MetaFetchParser:
@@ -312,7 +349,8 @@ class MetaFetchParser:
         self.PROCESS_NAMES = {
             self.fetch_meta: "Metadata fetch",
             self.timestamp: "Timestamp",
-            self.solar: "Solar"
+            self.solar: "Solar",
+            self.weather: "Weather"
         }
 
 
@@ -351,7 +389,7 @@ class MetaFetchParser:
         except Exception as e:
             #print(e)
             self.err += 1
-            self.map['customCoordinates'].remove(loc)
+            self.map.locs.remove(loc)
             print("Error: ",e)
             progress.update(1)
             return None
@@ -457,7 +495,7 @@ class MetaFetchParser:
                 except Exception as e:
                     print(e)
                     self.err += 1
-                    self.map['customCoordinates'].remove(loc)
+                    self.map.locs.remove(loc)
                     progress.update(1)
                     return None
 
@@ -489,11 +527,73 @@ class MetaFetchParser:
         progress.update(1)
         return loc
 
+    async def weather(self):
+        # IMPORTANT: You are limited to ~10000 requests per day.
+        #TODO: elevation and rain etc
+
+        chunk_size = 100
+        loc_pool = []
+
+        async def process_chunk(latstring, lngstring, datestring, chunk_num):
+            request_url = f"https://archive-api.open-meteo.com/v1/archive?latitude={latstring}&longitude={lngstring}&start_date={datestring}&end_date={datestring}&hourly=cloud_cover&timezone=GMT&format=json&timeformat=unixtime"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(request_url) as response:
+                        if response.status == 200:
+                            response_data = await response.json()
+                            print(f"Chunk {chunk_num + 1}")
+                            return response_data
+                        else:
+                            print(f"Request failed for chunk {chunk_num + 1} with status code: {response.status}")
+                            return None
+            except Exception as e:
+                print(f"Error processing chunk {chunk_num + 1}: {str(e)}")
+                return None
+
+        chunks = []
+        latstring, lngstring, datestring = "", "", ""
+        
+        for i, loc in enumerate(self.map.locs):
+            lat, lng = loc['lat'], loc['lng']
+            timestamp = loc['timestamp']
+            current_datetime = dt.utcfromtimestamp(timestamp)
+            date = current_datetime.strftime('%Y-%m-%d')
+            
+            latstring += f"{lat},"
+            lngstring += f"{lng},"
+            datestring += f"{date},"
+            
+            if (i + 1) % chunk_size == 0 or i == len(self.map.locs) - 1:
+                chunks.append((latstring[:-1], lngstring[:-1], datestring[:-1]))
+                latstring, lngstring, datestring = "", "", ""
+
+        tasks = [process_chunk(lat, lng, date, i) for i, (lat, lng, date) in enumerate(chunks)]
+        chunk_results = await asyncio.gather(*tasks)
+
+        for chunk_data in chunk_results:
+            for loc in chunk_data:
+                if loc and 'hourly' in loc:
+                    times = loc['hourly']['time']
+                    cloud_covers = loc['hourly']['cloud_cover']
+                    print(loc)
+                    for time, cloud_cover in zip(times, cloud_covers):
+                        loc_pool.append({'time': time, 'cloud_cover': cloud_cover})
+
+        for i, loc in enumerate(self.map.locs):
+            min_time = loc['timestamp'] - 1800
+            max_time = loc['timestamp'] + 1800
+            filtered_data = next((data for data in loc_pool if min_time <= data['time'] <= max_time), None)
+            
+            if filtered_data:
+                cloud_cover = filtered_data['cloud_cover']
+                loc['cloudCover'] = str(Classifier.cloud_cover_event(cloud_cover))
+
+
     async def bulk_parse(self, func):
-        chunks = [self.map['customCoordinates'][i:i + self.CHUNK_SIZE] for i in range(0, len(self.map['customCoordinates']), self.CHUNK_SIZE)]
+        chunks = [self.map.locs[i:i + self.CHUNK_SIZE] for i in range(0, len(self.map.locs), self.CHUNK_SIZE)]
 
         results = []
-        progress = tqdm(total=len(self.map['customCoordinates']), desc=self.PROCESS_NAMES[func])
+        progress = tqdm(total=len(self.map.locs), desc=self.PROCESS_NAMES[func])
 
         for chunk in chunks:
             tasks = [asyncio.create_task(func(loc, progress)) for loc in chunk]
@@ -538,7 +638,7 @@ if __name__ == '__main__':
         
 
         # MetaFetch
-        mfparser = MetaFetchParser(map_obj.data, argparser)
+        mfparser = MetaFetchParser(map_obj, argparser)
         asyncio.run(mfparser.bulk_parse(mfparser.fetch_meta))
 
         if argparser.group_true('temporal') or argparser.group_true('terrestrial'):
@@ -554,11 +654,18 @@ if __name__ == '__main__':
             except Exception as e:
                 print("Solar data retrieval error: ",e)
                 exit(1)
+        
+        if argparser.args.weather:
+            try:
+                asyncio.run(mfparser.weather())
+            except Exception as e:
+                print("Weather data retrieval error: ",e)
+                exit(1)
 
         map_obj.save(Path(f"{FOLDERS['meta']['path']}/{FOLDERS['base']['files'].stem}.json").absolute()) # Save to meta folder
         
         # MetaTag
-        meta = MetaTag(map_obj.data, argparser)
+        meta = MetaTag(map_obj, argparser)
         map_obj.save(Path(f"{FOLDERS['tagged']['path']}/{FOLDERS['base']['files'].stem}-{arg_string}.json"))
 
         end_time = time.time()

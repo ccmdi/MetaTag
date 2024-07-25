@@ -2,45 +2,62 @@ from pathlib import Path
 import json, csv
 
 class SVMap:
+    """
+    StreetView metadata map object.
+
+    Args:
+        file (str): The path to the file containing map data.
+
+    Attributes:
+        data (dict): The top-level map data.
+        locs (list): The list of coordinate data.
+    """
+
     def __init__(self, file):
-            with open(file) as f:
-                if Path(file).suffix == '.json':
-                        self.data = json.load(f)
-                        if not 'customCoordinates' in self.data:
-                            self.data = {"customCoordinates": self.data}
-                        self.locs = self.data['customCoordinates']
-            
-                elif Path(file).suffix == '.csv':
-                    reader = csv.reader(f)
-                    headers = next(reader)
-                    content = list(reader)
+        with open(file) as f:
+            if Path(file).suffix == '.json':
+                self.data = json.load(f)
+                if not 'customCoordinates' in self.data:
+                    self.data = {"customCoordinates": self.data}
+                self.locs = self.data['customCoordinates']
+        
+            elif Path(file).suffix == '.csv':
+                reader = csv.reader(f)
+                headers = next(reader)
+                content = list(reader)
 
-                    lat_index = headers.index('lat')
-                    lng_index = headers.index('lng')
+                lat_index = headers.index('lat')
+                lng_index = headers.index('lng')
 
-                    self.locs = []
+                self.locs = []
 
-                    for row in content:
-                        try:
-                            self.locs.append({
-                                "lat": float(row[lat_index]),
-                                "lng": float(row[lng_index]),
-                                "extra": {"tags": []}
-                            })
+                for row in content:
+                    try:
+                        self.locs.append({
+                            "lat": float(row[lat_index]),
+                            "lng": float(row[lng_index]),
+                            "extra": {"tags": []}
+                        })
 
-                            for i, value in enumerate(row):
-                                if i not in (lat_index, lng_index):
-                                    self.locs[-1][headers[i]] = value
+                        for i, value in enumerate(row):
+                            if i not in (lat_index, lng_index):
+                                self.locs[-1][headers[i]] = value
 
-                            if 'heading' not in self.locs[-1]:
-                                self.locs[-1]['heading'] = 0
-                        
-                        except:
-                            continue
+                        if 'heading' not in self.locs[-1]:
+                            self.locs[-1]['heading'] = 0
+                    
+                    except:
+                        continue
 
-                    self.data = {'name': Path(file).stem, "customCoordinates": self.locs}
+                self.data = {'name': Path(file).stem, "customCoordinates": self.locs}
 
     def save(self, file):
+        """
+        Saves the map data to a file.
+
+        Args:
+            file (str): The path to the file to save the data to.
+        """
         from metatag import CONFIG
 
         try:
@@ -112,6 +129,17 @@ class Classifier:
             elif 180 <= azimuth < 360:
                 return "Sunset"
         return None
+
+    
+    def cloud_cover_event(cover):
+        if cover < 10:
+            return "Clear"
+        if 10 <= cover < 50:
+            return "Partly Cloudy"
+        elif 50 <= cover < 80:
+            return "Mostly Cloudy"
+        else:
+            return "Overcast"
 
 
 
