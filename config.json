@@ -1,0 +1,8 @@
+{
+    "path": {
+        "base": "./maps/base",
+        "meta": "./maps/meta",
+        "tagged": "./maps/tagged"
+    },
+    "compressFile": false
+}

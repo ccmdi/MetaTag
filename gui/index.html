@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>MetaTag</title>
+
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="main.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""/>
+  <!-- <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css"></link>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css"></link> -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script
+        src="https://code.jquery.com/jquery-3.7.1.min.js"
+        integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+        crossorigin="anonymous">
+  </script>
+   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+   integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+   crossorigin=""></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.0.1/pixi.min.js" integrity="sha512-mtU63eoOlpQEykPbT0XwEJhB69vtAdy/vfeF+yT7X33hTjCPlHZ5DR8Hdm+pq7RHTla2HZ9sDa+Zk10Rhvjg+Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+   <script src=" https://cdn.jsdelivr.net/npm/leaflet-pixi-overlay@1.9.4/L.PixiOverlay.min.js "></script>
+   <script src="https://unpkg.com/@popperjs/core@2/dist/umd/popper.js"></script>
+   <!-- <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script> -->
+   <script src="fluff/kdTree.js" type="text/javascript"></script>
+   <script src=" https://cdn.jsdelivr.net/npm/tz-lookup@6.1.25/tz.min.js "></script>
+   <script src="util.js"></script>
+    <script src="map.js"></script>
+</head>
+
+<body>
+  <div id="uploadContainer">
+    <div class="upload-btn-wrapper">
+        <button>Upload a File</button>
+        <input id="mapFile" type="file" name="map"/>
+    </div>
+  </div>
+  
+  <div id="settingsContainer" style="display:none">
+    <div id="settings">
+        <h1>Settings</h1>
+        <div id="options">
+            <div class="column">
+                <div class="category">
+                    <h3>Temporal</h3>
+                    <div class="category-options">
+                        <label><input type="checkbox" value="-d"><span>Date</span></label>
+                        <label><input type="checkbox" value="-t"><span>Time</span></label>
+                        <label><input type="checkbox" value="-m"><span>Month</span></label>
+                        <label><input type="checkbox" value="-y"><span>Year</span></label>
+                    </div>
+                </div>
+
+                <div class="category">
+                    <h3>Terrestrial</h3>
+                    <div class="category-options">
+                        <label><input type="checkbox" value="-s"><span>Solar</span></label>
+                        <label><input type="checkbox" value="-S"><span>Solar (precise)</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column">
+                <div class="category">
+                    <h3>Geographical</h3>
+                    <div class="category-options">
+                        <label><input type="checkbox" value="-country"><span>Country</span></label>
+                        <label><input type="checkbox" value="-state"><span>State</span></label>
+                        <label><input type="checkbox" value="-locality"><span>Locality</span></label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="submitButtonWrapper">
+            <button id="submitButton" type="submit">Submit</button>
+        </div>
+        <div id="filterWrapper">
+            <div id="filterContainer" class="filter-container">
+                <div class="filter-scroll"></div>
+                <button id="addFilter">+</button>
+            </div>
+        </div>
+    
+    </div>
+
+    <div id="output">
+        <div id="infoBox">
+            <h3 class="headline"></h3>
+            <h4 class="subline"></h4>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <div id="progressContainer" hidden>
+        <button id="progressCancel">✕</button>
+        <h3 id="progressContainerDescription"></h3>
+
+        <div id="progressHolder">
+            <div id="progress"></div>
+        </div>
+    </div>
+  </div>
+
+  <div id="tooltip"></div>
+
+  <script src="process.js"></script>
+</body>
+
+</html>

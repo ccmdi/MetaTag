@@ -1,0 +1,4 @@
+folium==0.16.0
+pandas==2.2.2
+requests==2.31.0
+tqdm==4.66.4
