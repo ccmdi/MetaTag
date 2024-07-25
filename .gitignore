@@ -25,7 +25,10 @@ MANIFEST
 
 
 # Files
-maps/*
+maps/base/*
+maps/csv/
+maps/meta/*
+maps/tagged/*
 csv/*
 clouds/*
 get_path.py
