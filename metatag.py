@@ -103,6 +103,7 @@ class ArgParser:
         self.add_argument(parser, '-s','--solar', action='store_true', group='terrestrial')
         self.add_argument(parser, '-S','--SOLAR', action='store_true', group='terrestrial')
         self.add_argument(parser, '-w','--weather', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-W', '--WEATHER', action='store_true', group='terrestrial')
         self.add_argument(parser, '--heading', type=str, default=None, help='Update heading; orient towards object i.e. solar', group='terrestrial')
         self.add_argument(parser, '-drivingdirection', action='store_true', help='Update driving direction', group='terrestrial')
 
@@ -193,6 +194,9 @@ class MetaTag:
                                 raise SVMap.CacheError()
                             else:
                                 raise ValueError("Solar data not found")
+                    if self.args.weather or self.args.WEATHER:
+                        cloud_cover_class = str(item['cloudCoverClass']) if 'cloudCoverClass' in item else None
+                        cloud_cover = str(item['cloudCover']) if 'cloudCover' in item else None
 
 
                     # Tagging
@@ -215,6 +219,10 @@ class MetaTag:
                         tags.extend([str(altitude)+" #", str(azimuth)+" @"])
                         self.attr_sets['altitudes'].add(altitude+" #")
                         self.attr_sets['azimuths'].add(azimuth +" @")
+                    if self.args.weather:
+                        tags.append(cloud_cover_class)
+                    if self.args.WEATHER:
+                        tags.append(cloud_cover)
 
                     # Prune empty tags
                     tags = [tag for tag in tags if tag]
@@ -586,7 +594,8 @@ class MetaFetchParser:
             
             if filtered_data:
                 cloud_cover = filtered_data['cloud_cover']
-                loc['cloudCover'] = str(Classifier.cloud_cover_event(cloud_cover))
+                loc['cloudCoverClass'] = str(Classifier.cloud_cover_event(cloud_cover))
+                loc['cloudCover'] = cloud_cover
 
 
     async def bulk_parse(self, func):
@@ -655,7 +664,7 @@ if __name__ == '__main__':
                 print("Solar data retrieval error: ",e)
                 exit(1)
         
-        if argparser.args.weather:
+        if argparser.args.weather or argparser.args.WEATHER:
             try:
                 asyncio.run(mfparser.weather())
             except Exception as e:
