@@ -1,5 +1,5 @@
 # MetaTag
-This is a tool designed to take simple latitude/longitude JSON's and add various Street View metadata to them. This includes:
+This is a tool designed to take simple latitude/longitude JSON's and add various Google Street View metadata to them. This includes:
 * Temporal data
 	* Date
 	* Time
@@ -25,7 +25,7 @@ The underlying script works around the `maps` folder; the paths can be configure
 * `python metatag.py <mapfile> <arguments>`
 
 # GUI
-For any given map, simply upload the file. You will see a view showing settings to add on the left, a simplistic map viewer on the right. Checking the checkboxes and clicking submit will run the script with for desired attributes, and refresh the map view with the new map file. It will also be outputted to the `maps/tagged` folder for external use.
+For any given map, simply upload the file. You will see a view showing settings to add on the left, and a simplistic map viewer on the right. Checking the checkboxes and clicking submit will run the script with for desired attributes, and refresh the map view with the new map file. It will also be outputted to the `maps/tagged` folder for external use.
 
 # CLI
 If you are running `metatag.py`, this is the list of arguments that are presently available. Each section name denotes an action, followed by the command's name.
