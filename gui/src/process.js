@@ -92,7 +92,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         progressContainer.classList.add('progressContainerAnimated');
 
-        window.electronAPI.runPythonScript({ filePath, selectedOptions });
+        const command = "tag";
+        window.electronAPI.runPythonScript({ filePath, command, selectedOptions });
         progressContainer.removeAttribute('hidden');
     });
 

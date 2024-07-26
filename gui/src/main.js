@@ -43,9 +43,9 @@ app.whenReady().then(() => {
 
 
 ipcMain.handle('run-python', (event, args) => {
-    console.log(args.filePath, args.selectedOptions);
-    const python = spawn('python', ['metatag.py', args.filePath, ...args.selectedOptions], {
-        cwd: path.join(__dirname, '..')
+    console.log(args.filePath, args.command, args.selectedOptions);
+    const python = spawn('python', ['metatag.py', args.command, args.filePath, ...args.selectedOptions], {
+        cwd: path.join(__dirname, '../..')
     });
     
     //Store the process reference
@@ -100,3 +100,6 @@ ipcMain.on('read-file', (event, filePath) => {
         event.sender.send('file-data', data);
     });
 });
+
+
+

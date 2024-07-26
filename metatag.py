@@ -251,7 +251,7 @@ class MetaTag:
             if self.arg_parser.group_true('temporal'):
                 sorted_dates = self.order_tags(self.attr_sets['dates'])
                 self.offset += sorted_dates[2]
-                print("Datetime span:", sorted_dates[0], "to", sorted_dates[1])
+                # print("Datetime span:", sorted_dates[0], "to", sorted_dates[1])
 
             if self.args.SOLAR:
                 sorted_altitude = self.order_tags(self.attr_sets['altitudes'], sortby='solar')
