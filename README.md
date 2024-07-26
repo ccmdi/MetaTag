@@ -40,9 +40,11 @@ If you are running `metatag.py`, this is the list of arguments that are presentl
 * `-c --locality`
 * `-s --solar` Stores class-based information about the sun, such as cardinal directions
 * `-S --SOLAR` Stores raw information about the sun (rounded to nearest integer)
+* `-w --weather` Stores class-based information about weather
+* `-W --WEATHER` Stores raw information about the weather (rounded to nearest integer)
 
 ### Options
-* `--round <int>` Integer by which to round time (nearest 15min, 30min, etc.)
+* `--round <int>` Integer by which to round time (nearest 15 min, 30 min, etc.)
 * `--load` Loads date from tags
 * `--accuracy <int>` Accuracy of date fetch (in seconds) -- defaults to 1
 * `-n --no-cache-in` No cache input

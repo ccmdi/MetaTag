@@ -537,7 +537,11 @@ class MetaFetchParser:
 
     async def weather(self):
         # IMPORTANT: You are limited to ~10000 requests per day.
+        # Accuracy may vary!
+        
         #TODO: elevation and rain etc
+        if(self.arg_parser.cached and 'cloudCover' in self.map.locs[0]):
+            return
 
         chunk_size = 100
         loc_pool = []
@@ -549,7 +553,7 @@ class MetaFetchParser:
                     async with session.get(request_url) as response:
                         if response.status == 200:
                             response_data = await response.json()
-                            print(f"Chunk {chunk_num + 1}")
+                            # print(f"Chunk {chunk_num + 1}")
                             return response_data
                         else:
                             print(f"Request failed for chunk {chunk_num + 1} with status code: {response.status}")
@@ -583,7 +587,7 @@ class MetaFetchParser:
                 if loc and 'hourly' in loc:
                     times = loc['hourly']['time']
                     cloud_covers = loc['hourly']['cloud_cover']
-                    print(loc)
+                    # print(loc)
                     for time, cloud_cover in zip(times, cloud_covers):
                         loc_pool.append({'time': time, 'cloud_cover': cloud_cover})
 
