@@ -45,4 +45,4 @@ venv.bak/
 
 
 # Node
-gui/src/node_modules/
+gui/*
