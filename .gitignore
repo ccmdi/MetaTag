@@ -1,3 +1,5 @@
+.vscode/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -32,6 +34,7 @@ maps/tagged/*
 csv/*
 clouds/*
 get_path.py
+timestamp_to_cluster.py
 
 
 # Environments
