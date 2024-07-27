@@ -14,11 +14,13 @@ This is a tool designed to take simple latitude/longitude JSON's and add various
 * Terrestrial data
 	* Solar azimuth (direction)
 	* Solar altitude (height)
-	* Cloud cover
-	* Precipitation
-	* Snow depth
+	* Cloud cover[^1]
+	* Precipitation[^1]
+	* Snow depth[^1]
 	* ~~Elevation~~
 * Driving direction
+
+[^1]: These attributes are fetched at hourly intervals and rounded lat/lng with historic data from Open-Meteo. This data is fantastic and wide-ranging, but low resolution; do not expect precise results.
 
 The underlying script works around the `maps` folder; the paths can be configured in [config.json](https://github.com/ccmdi/MetaTag/blob/main/config.json). `maps/base` is a convenient folder to store all maps you work with, however you can run the script from anywhere. For any map you wish to tag, there are two options:
 * ~~Run `MetaTag.exe` for a simple GUI and visualization~~
