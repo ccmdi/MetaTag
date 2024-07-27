@@ -18,6 +18,7 @@ from pysolar.solar import get_altitude, get_azimuth
 import asyncio, aiohttp
 from aiolimiter import AsyncLimiter
 from tqdm import tqdm
+import logging
 
 # Local
 from sv_map import SVMap, Classifier
@@ -42,6 +43,11 @@ FOLDERS = {
         'exists': False
     }
 }
+DEBUG = CONFIG['debug']
+if DEBUG:
+    if DEBUG == True: DEBUG = 0
+    logging.basicConfig(level=CONFIG['debug'], format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 for folder in FOLDERS.values():
     if not os.path.exists(folder['path']):
@@ -282,7 +288,7 @@ class MetaTag:
                 self.offset += sorted_cloud_cover[2]
 
         except Exception as e:
-            print(f'Error: {e}')
+            logging.error(f'Error: {e}')
             exit(1)
 
     def tz_datestring(self, lat, lng, unix_time, roundt=False):
@@ -419,10 +425,9 @@ class MetaFetchParser:
                 raise Exception("Unable to date image "+str(lat), str(lng))
 
         except Exception as e:
-            #print(e)
+            logging.error(e)
             self.err += 1
             self.map.locs.remove(loc)
-            print("Error: ",e)
             progress.update(1)
             return None
         progress.update(1)
@@ -525,7 +530,7 @@ class MetaFetchParser:
                                 loc['heading'] = 0
 
                 except Exception as e:
-                    print(e)
+                    logging.error(e)
                     self.err += 1
                     self.map.locs.remove(loc)
                     progress.update(1)
@@ -552,7 +557,7 @@ class MetaFetchParser:
                 loc['azimuth_class'] = Classifier.direction(azimuth)
                 loc['sun_event'] = Classifier.sun_event(altitude, azimuth)
         except Exception as e:
-            print(e)
+            logging.error(e)
             self.err += 1
             progress.update(1)
             return None
@@ -647,7 +652,6 @@ class MetaFetchParser:
             filtered_data = [data for data in loc_pool if min_time <= data['time'] <= max_time]
             
             if filtered_data:
-                # Find the data entry with the closest timestamp
                 closest_data = min(filtered_data, key=lambda data: abs(data['time'] - loc['timestamp']))
                 # print(f"Closest data for location {i + 1}: {closest_data}")
 
@@ -680,6 +684,7 @@ class MetaFetchParser:
 
 
 if __name__ == '__main__':
+    logging.info("Starting process")
     # ArgParser
     argparser = ArgParser()
 
@@ -710,10 +715,12 @@ if __name__ == '__main__':
         
 
         # MetaFetch
+        logging.info("Metadata fetch")
         mfparser = MetaFetchParser(map_obj, argparser)
         asyncio.run(mfparser.bulk_parse(mfparser.fetch_meta))
 
         if argparser.group_true('temporal') or argparser.group_true('terrestrial'):
+            logging.info("Temporal parsing")
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.timestamp))
             except Exception as e:
@@ -721,6 +728,7 @@ if __name__ == '__main__':
                 exit(1)
         
         if argparser.args.solar or argparser.args.SOLAR:
+            logging.info("Solar parsing")
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.solar))
             except Exception as e:
@@ -728,6 +736,7 @@ if __name__ == '__main__':
                 exit(1)
         
         if argparser.args.clouds or argparser.args.CLOUDS or argparser.args.precipitation or argparser.args.snow:
+            logging.info("Weather parsing")
             try:
                 asyncio.run(mfparser.weather())
             except Exception as e:
@@ -743,7 +752,7 @@ if __name__ == '__main__':
         end_time = time.time()
         runtime = end_time - meta.start_time
 
-        #print(f"Tagging runtime: {round(runtime,5)} seconds")
+        logging.debug(f"Tagging runtime: {round(runtime,5)} seconds")
     elif argparser.args.command == 'delete':
         if argparser.args.cascade or argparser.args.meta:
             try:
@@ -772,3 +781,4 @@ if __name__ == '__main__':
                 print("Deleted " + str(FOLDERS['base']['files']))
             except FileNotFoundError as e:
                 print("Failed to delete: " + str(e))
+    logging.info("Finished process")
