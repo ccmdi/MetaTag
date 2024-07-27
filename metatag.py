@@ -16,6 +16,7 @@ from pysolar.solar import get_altitude, get_azimuth
 
 # Explicit processing
 import asyncio, aiohttp
+from aiolimiter import AsyncLimiter
 from tqdm import tqdm
 
 # Local
@@ -537,7 +538,7 @@ class MetaFetchParser:
 
     async def weather(self):
         # IMPORTANT: You are limited to ~10000 requests per day.
-        # Accuracy may vary!
+        # Accuracy may vary! Low resolution data -- hourly & imprecise lat/lng.
         
         #TODO: elevation and rain etc
         if(self.arg_parser.cached and 'cloudCover' in self.map.locs[0]):
@@ -545,19 +546,27 @@ class MetaFetchParser:
 
         chunk_size = 100
         loc_pool = []
+        request_count = 0
+        METEO_MAX_RATE = (600/chunk_size) # You can also self-host the API https://github.com/open-meteo/open-meteo/blob/main/docs/getting-started.md
+
+        rate_limiter = AsyncLimiter(max_rate=METEO_MAX_RATE, time_period=60)
 
         async def process_chunk(latstring, lngstring, datestring, chunk_num):
+            nonlocal request_count
             request_url = f"https://archive-api.open-meteo.com/v1/archive?latitude={latstring}&longitude={lngstring}&start_date={datestring}&end_date={datestring}&hourly=cloud_cover&timezone=GMT&format=json&timeformat=unixtime"
+
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(request_url) as response:
-                        if response.status == 200:
-                            response_data = await response.json()
-                            # print(f"Chunk {chunk_num + 1}")
-                            return response_data
-                        else:
-                            print(f"Request failed for chunk {chunk_num + 1} with status code: {response.status}")
-                            return None
+                    async with rate_limiter:
+                        async with session.get(request_url) as response:
+                            request_count += 1
+                            print(f"Request {request_count} for chunk {chunk_num + 1}")
+                            if response.status == 200:
+                                response_data = await response.json()
+                                return response_data
+                            else:
+                                print(f"Request failed for chunk {chunk_num + 1} with status code: {response.status}")
+                                return None
             except Exception as e:
                 print(f"Error processing chunk {chunk_num + 1}: {str(e)}")
                 return None
@@ -594,10 +603,15 @@ class MetaFetchParser:
         for i, loc in enumerate(self.map.locs):
             min_time = loc['timestamp'] - 1800
             max_time = loc['timestamp'] + 1800
-            filtered_data = next((data for data in loc_pool if min_time <= data['time'] <= max_time), None)
+            filtered_data = [data for data in loc_pool if min_time <= data['time'] <= max_time]
             
             if filtered_data:
-                cloud_cover = filtered_data['cloud_cover']
+                # Find the data entry with the closest timestamp
+                closest_data = min(filtered_data, key=lambda data: abs(data['time'] - loc['timestamp']))
+                print(f"Closest data for location {loc['lat']},{loc['lng']}: {closest_data}")
+                if not closest_data or 'cloud_cover' not in closest_data or not closest_data['cloud_cover']:
+                    continue
+                cloud_cover = closest_data['cloud_cover']
                 loc['cloudCoverClass'] = str(Classifier.cloud_cover_event(cloud_cover))
                 loc['cloudCover'] = cloud_cover
 
