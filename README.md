@@ -9,7 +9,7 @@ This is a tool designed to take simple latitude/longitude JSON's and add various
 	* Country
 	* State
 	* Locality
-	* Population (/1x1km)[^1]
+	* ~~Population (/1x1km)~~[^1]
 	* ~~Elevation~~
 * Terrestrial data
 	* Solar azimuth (direction)
