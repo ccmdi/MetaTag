@@ -141,7 +141,8 @@ class MetaTag:
         self.attr_sets = {
             'dates': set(),
             'altitudes': set(),
-            'azimuths': set()
+            'azimuths': set(),
+            'cloud_cover': set()
         }
         
         self.tf = TimezoneFinder()
@@ -196,7 +197,7 @@ class MetaTag:
                             else:
                                 raise ValueError("Solar data not found")
                     if self.args.weather or self.args.WEATHER:
-                        cloud_cover_class = str(item['cloudCoverClass']) if 'cloudCoverClass' in item else None
+                        cloud_cover_class = str(item['cloudCoverClass']) if 'cloudCoverClass' in item else None #CHANGE name & figure out why error thrown
                         cloud_cover = str(item['cloudCover']) if 'cloudCover' in item else None
 
 
@@ -221,15 +222,19 @@ class MetaTag:
                         self.attr_sets['altitudes'].add(altitude+" #")
                         self.attr_sets['azimuths'].add(azimuth +" @")
                     if self.args.weather:
-                        tags.append(cloud_cover_class)
+                        if cloud_cover_class:
+                            tags.append(cloud_cover_class)
                     if self.args.WEATHER:
-                        tags.append(cloud_cover)
+                        if cloud_cover:
+                            tags.append(cloud_cover)
+                            self.attr_sets['cloud_cover'].add(cloud_cover)
 
                     # Prune empty tags
                     tags = [tag for tag in tags if tag]
 
                     # Append to data
                     if "extra" in item and "tags" in item["extra"]:
+                        # Edge case if tag(s) are non-array
                         if not isinstance(item['extra']['tags'], list):
                             item['extra']['tags'] = [item['extra']['tags']]
                         
@@ -259,6 +264,10 @@ class MetaTag:
                 self.offset += sorted_altitude[2]
                 sorted_azimuth = self.order_tags(self.attr_sets['azimuths'], sortby='solar')
                 self.offset += sorted_azimuth[2]
+            
+            if self.args.WEATHER:
+                sorted_weather = self.order_tags(self.attr_sets['cloud_cover'], sortby='cloud_cover')
+                self.offset += sorted_weather[2]
 
         except Exception as e:
             print(f'Error: {e}')
@@ -333,6 +342,8 @@ class MetaTag:
             sli = sorted(list(attribute_set), key=lambda i: dt.strptime(i, self.datestring) if self.datestring else i)
         elif sortby == 'solar':
             sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'\d+', i).group()) if int(re.search(r'\d+', i).group()) else i)
+        elif sortby == 'cloud_cover':
+            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'\d+', i).group()))
         start = sli[0]
         end = sli[-1]
         i = 0 if self.offset == 0 else 1
