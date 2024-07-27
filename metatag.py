@@ -103,8 +103,10 @@ class ArgParser:
         self.add_argument(parser, '-c', '--locality', action='store_true', group='geographical')
         self.add_argument(parser, '-s','--solar', action='store_true', group='terrestrial')
         self.add_argument(parser, '-S','--SOLAR', action='store_true', group='terrestrial')
-        self.add_argument(parser, '-w','--weather', action='store_true', group='terrestrial')
-        self.add_argument(parser, '-W', '--WEATHER', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-u','--clouds', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-U', '--CLOUDS', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-p', '--precipitation', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-w', '--snow', action='store_true', group='terrestrial')
         self.add_argument(parser, '--heading', type=str, default=None, help='Update heading; orient towards object i.e. solar', group='terrestrial')
         self.add_argument(parser, '-drivingdirection', action='store_true', help='Update driving direction', group='terrestrial')
 
@@ -196,9 +198,13 @@ class MetaTag:
                                 raise SVMap.CacheError()
                             else:
                                 raise ValueError("Solar data not found")
-                    if self.args.weather or self.args.WEATHER:
+                    if self.args.clouds or self.args.CLOUDS:
                         cloud_cover_class = str(item['cloudCoverClass']) if 'cloudCoverClass' in item else None #CHANGE name & figure out why error thrown
                         cloud_cover = str(item['cloudCover']) if 'cloudCover' in item else None
+                    if self.args.precipitation:
+                        precipitation = str(item['precipitation']) if 'precipitation' in item and item['precipitation'] and item['precipitation'] > 0 else None
+                    if self.args.snow:
+                        snow_cover = str(item['snowCover']) if 'snowCover' in item and item['snowCover'] and item['snowCover'] > 0 else None
 
 
                     # Tagging
@@ -221,13 +227,19 @@ class MetaTag:
                         tags.extend([str(altitude)+" #", str(azimuth)+" @"])
                         self.attr_sets['altitudes'].add(altitude+" #")
                         self.attr_sets['azimuths'].add(azimuth +" @")
-                    if self.args.weather:
+                    if self.args.clouds:
                         if cloud_cover_class:
                             tags.append(cloud_cover_class)
-                    if self.args.WEATHER:
+                    if self.args.CLOUDS:
                         if cloud_cover:
                             tags.append(cloud_cover)
                             self.attr_sets['cloud_cover'].add(cloud_cover)
+                    if self.args.precipitation:
+                        if precipitation:
+                            tags.append("PD "+precipitation)
+                    if self.args.snow:
+                        if snow_cover:
+                            tags.append("SNOW "+snow_cover)
 
                     # Prune empty tags
                     tags = [tag for tag in tags if tag]
@@ -265,9 +277,9 @@ class MetaTag:
                 sorted_azimuth = self.order_tags(self.attr_sets['azimuths'], sortby='solar')
                 self.offset += sorted_azimuth[2]
             
-            if self.args.WEATHER:
-                sorted_weather = self.order_tags(self.attr_sets['cloud_cover'], sortby='cloud_cover')
-                self.offset += sorted_weather[2]
+            if self.args.CLOUDS:
+                sorted_cloud_cover = self.order_tags(self.attr_sets['cloud_cover'], sortby='cloud_cover')
+                self.offset += sorted_cloud_cover[2]
 
         except Exception as e:
             print(f'Error: {e}')
@@ -551,8 +563,17 @@ class MetaFetchParser:
         # IMPORTANT: You are limited to ~10000 requests per day.
         # Accuracy may vary! Low resolution data -- hourly & imprecise lat/lng.
         
-        #TODO: elevation and rain etc
-        if(self.arg_parser.cached and 'cloudCover' in self.map.locs[0]):
+        #TODO: elevation
+        
+        endpoints = {
+            'clouds': 'cloud_cover',
+            'precipitation': 'precipitation',
+            'snow': 'snow_depth'
+        }
+        requested_params = [param for param in endpoints if getattr(self.arg_parser.args, param, False)]
+        METEO_ARGSTRING = ",".join([endpoints[param] for param in requested_params])
+
+        if self.arg_parser.cached and (all(endpoints[param] in self.map.locs[0] for param in requested_params) or (self.arg_parser.args.clouds and 'cloud_cover_class' in self.map.locs[0])):
             return
 
         chunk_size = 100
@@ -564,14 +585,14 @@ class MetaFetchParser:
 
         async def process_chunk(latstring, lngstring, datestring, chunk_num):
             nonlocal request_count
-            request_url = f"https://archive-api.open-meteo.com/v1/archive?latitude={latstring}&longitude={lngstring}&start_date={datestring}&end_date={datestring}&hourly=cloud_cover&timezone=GMT&format=json&timeformat=unixtime"
+            request_url = f"https://archive-api.open-meteo.com/v1/archive?latitude={latstring}&longitude={lngstring}&start_date={datestring}&end_date={datestring}&hourly={METEO_ARGSTRING}&timezone=GMT&format=json&timeformat=unixtime"
 
             try:
                 async with aiohttp.ClientSession() as session:
                     async with rate_limiter:
                         async with session.get(request_url) as response:
                             request_count += 1
-                            print(f"Request {request_count} for chunk {chunk_num + 1}")
+                            # print(f"Request {request_count} for chunk {chunk_num + 1}")
                             if response.status == 200:
                                 response_data = await response.json()
                                 return response_data
@@ -606,10 +627,19 @@ class MetaFetchParser:
             for loc in chunk_data:
                 if loc and 'hourly' in loc:
                     times = loc['hourly']['time']
-                    cloud_covers = loc['hourly']['cloud_cover']
-                    # print(loc)
-                    for time, cloud_cover in zip(times, cloud_covers):
-                        loc_pool.append({'time': time, 'cloud_cover': cloud_cover})
+                    for time in times:
+                        weather_mapping = {'time': time}
+                        
+                        if 'cloud_cover' in loc['hourly']:
+                            weather_mapping['cloud_cover'] = loc['hourly']['cloud_cover'][times.index(time)]
+                        
+                        if 'precipitation' in loc['hourly']:
+                            weather_mapping['precipitation'] = loc['hourly']['precipitation'][times.index(time)]
+                        
+                        if 'snow_depth' in loc['hourly']:
+                            weather_mapping['snow_depth'] = loc['hourly']['snow_depth'][times.index(time)]
+                        
+                        loc_pool.append(weather_mapping)
 
         for i, loc in enumerate(self.map.locs):
             min_time = loc['timestamp'] - 1800
@@ -619,12 +649,16 @@ class MetaFetchParser:
             if filtered_data:
                 # Find the data entry with the closest timestamp
                 closest_data = min(filtered_data, key=lambda data: abs(data['time'] - loc['timestamp']))
-                print(f"Closest data for location {loc['lat']},{loc['lng']}: {closest_data}")
-                if not closest_data or 'cloud_cover' not in closest_data or not closest_data['cloud_cover']:
-                    continue
-                cloud_cover = closest_data['cloud_cover']
-                loc['cloudCoverClass'] = str(Classifier.cloud_cover_event(cloud_cover))
-                loc['cloudCover'] = cloud_cover
+                # print(f"Closest data for location {i + 1}: {closest_data}")
+
+                if closest_data and 'cloud_cover' in closest_data:
+                    cloud_cover = closest_data['cloud_cover']
+                    loc['cloud_cover_class'] = str(Classifier.cloud_cover_event(cloud_cover))
+                    loc['cloud_cover'] = cloud_cover
+                if closest_data and 'precipitation' in closest_data:
+                    loc['precipitation'] = closest_data['precipitation']
+                if closest_data and 'snow_depth' in closest_data:
+                    loc['snow_depth'] = closest_data['snow_depth']
 
 
     async def bulk_parse(self, func):
@@ -693,7 +727,7 @@ if __name__ == '__main__':
                 print("Solar data retrieval error: ",e)
                 exit(1)
         
-        if argparser.args.weather or argparser.args.WEATHER:
+        if argparser.args.clouds or argparser.args.CLOUDS or argparser.args.precipitation or argparser.args.snow:
             try:
                 asyncio.run(mfparser.weather())
             except Exception as e:
