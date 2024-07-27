@@ -25,14 +25,14 @@ MANIFEST
 
 
 # Files
+*.json
 maps/base/*
 maps/csv/
 maps/meta/*
 maps/tagged/*
 csv/*
 clouds/*
-get_path.py
-
+2020 pop 1km.tif
 
 # Environments
 .env
