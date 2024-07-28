@@ -45,6 +45,7 @@ If you are running `metatag.py`, this is the list of arguments that are presentl
 * `-U --CLOUDS` Raw information about the cloud cover (rounded to nearest integer)
 * `-p --precipitation` Precipitation (mm)
 * `-s --snow` Snow depth (m)
+* `-e --elevation` Elevation (m)
 
 ### Options
 * `--round <int>` Integer by which to round **time** (nearest 15 min, 30 min, etc.)
