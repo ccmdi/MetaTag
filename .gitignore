@@ -30,6 +30,9 @@ maps/base/*
 maps/csv/
 maps/meta/*
 maps/tagged/*
+!maps/base/Tunisia Car.json
+!maps/meta/Tunisia Car.json
+!maps/tagged/Tunisia Car-d.json
 csv/*
 clouds/*
 2020 pop 1km.tif
