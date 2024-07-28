@@ -19,7 +19,7 @@ This is a tool designed to take simple latitude/longitude JSON's and add various
 	* Snow depth
 * Driving direction
 
-[^1]: Requires additional dataset.
+[^1]: Requires additional dataset. See `pop` folder for instructions.
 
 The underlying script works around the `maps` folder; the paths can be configured in [config.json](https://github.com/ccmdi/MetaTag/blob/main/config.json). `maps/base` is a convenient folder to store all maps you work with, however you can run the script from anywhere. For any map you wish to tag, there are two options:
 * ~~Run `MetaTag.exe` for a simple GUI and visualization~~
