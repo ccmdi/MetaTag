@@ -4,5 +4,6 @@
         "meta": "./maps/meta",
         "tagged": "./maps/tagged"
     },
-    "compressFile": false
+    "compressFile": false,
+    "debug": false
 }

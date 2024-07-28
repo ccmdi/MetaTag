@@ -16,7 +16,9 @@ from pysolar.solar import get_altitude, get_azimuth
 
 # Explicit processing
 import asyncio, aiohttp
+from aiolimiter import AsyncLimiter
 from tqdm import tqdm
+import logging
 
 # Local
 from sv_map import SVMap, Classifier
@@ -41,6 +43,11 @@ FOLDERS = {
         'exists': False
     }
 }
+DEBUG = CONFIG['debug']
+if DEBUG:
+    if DEBUG == True: DEBUG = 0
+    logging.basicConfig(level=CONFIG['debug'], format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 for folder in FOLDERS.values():
     if not os.path.exists(folder['path']):
@@ -102,8 +109,11 @@ class ArgParser:
         self.add_argument(parser, '-c', '--locality', action='store_true', group='geographical')
         self.add_argument(parser, '-s','--solar', action='store_true', group='terrestrial')
         self.add_argument(parser, '-S','--SOLAR', action='store_true', group='terrestrial')
-        self.add_argument(parser, '-w','--weather', action='store_true', group='terrestrial')
-        self.add_argument(parser, '-W', '--WEATHER', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-u','--clouds', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-U', '--CLOUDS', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-p', '--precipitation', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-w', '--snow', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-e', '--elevation', action='store_true', group='terrestrial')
         self.add_argument(parser, '--heading', type=str, default=None, help='Update heading; orient towards object i.e. solar', group='terrestrial')
         self.add_argument(parser, '-drivingdirection', action='store_true', help='Update driving direction', group='terrestrial')
 
@@ -140,7 +150,9 @@ class MetaTag:
         self.attr_sets = {
             'dates': set(),
             'altitudes': set(),
-            'azimuths': set()
+            'azimuths': set(),
+            'cloud_cover': set(),
+            'elevation': set()
         }
         
         self.tf = TimezoneFinder()
@@ -194,9 +206,15 @@ class MetaTag:
                                 raise SVMap.CacheError()
                             else:
                                 raise ValueError("Solar data not found")
-                    if self.args.weather or self.args.WEATHER:
+                    if self.args.clouds or self.args.CLOUDS:
                         cloud_cover_class = str(item['cloudCoverClass']) if 'cloudCoverClass' in item else None
                         cloud_cover = str(item['cloudCover']) if 'cloudCover' in item else None
+                    if self.args.precipitation:
+                        precipitation = str(item['precipitation']) if 'precipitation' in item and item['precipitation'] and item['precipitation'] > 0 else None
+                    if self.args.snow:
+                        snow_cover = str(item['snowCover']) if 'snowCover' in item and item['snowCover'] and item['snowCover'] > 0 else None
+                    if self.args.elevation:
+                        elevation = str(round(float(item['elevation']))) if 'elevation' in item and item['elevation'] else None
 
 
                     # Tagging
@@ -219,16 +237,30 @@ class MetaTag:
                         tags.extend([str(altitude)+" #", str(azimuth)+" @"])
                         self.attr_sets['altitudes'].add(altitude+" #")
                         self.attr_sets['azimuths'].add(azimuth +" @")
-                    if self.args.weather:
-                        tags.append(cloud_cover_class)
-                    if self.args.WEATHER:
-                        tags.append(cloud_cover)
+                    if self.args.clouds:
+                        if cloud_cover_class:
+                            tags.append(cloud_cover_class)
+                    if self.args.CLOUDS:
+                        if cloud_cover:
+                            tags.append(cloud_cover)
+                            self.attr_sets['cloud_cover'].add(cloud_cover)
+                    if self.args.precipitation:
+                        if precipitation:
+                            tags.append("PRCP "+precipitation)
+                    if self.args.snow:
+                        if snow_cover:
+                            tags.append("SNOW "+snow_cover)
+                    if self.args.elevation:
+                        if elevation:
+                            tags.append("ELEV "+elevation)
+                            self.attr_sets['elevation'].add("ELEV "+elevation)
 
                     # Prune empty tags
                     tags = [tag for tag in tags if tag]
 
                     # Append to data
                     if "extra" in item and "tags" in item["extra"]:
+                        # Edge case if tag(s) are non-array
                         if not isinstance(item['extra']['tags'], list):
                             item['extra']['tags'] = [item['extra']['tags']]
                         
@@ -258,9 +290,17 @@ class MetaTag:
                 self.offset += sorted_altitude[2]
                 sorted_azimuth = self.order_tags(self.attr_sets['azimuths'], sortby='solar')
                 self.offset += sorted_azimuth[2]
+            
+            if self.args.CLOUDS:
+                sorted_cloud_cover = self.order_tags(self.attr_sets['cloud_cover'], sortby='cloud_cover')
+                self.offset += sorted_cloud_cover[2]
+            
+            if self.args.elevation:
+                sorted_elevation = self.order_tags(self.attr_sets['elevation'], sortby='elevation')
+                self.offset += sorted_elevation[2]
 
         except Exception as e:
-            print(f'Error: {e}')
+            logging.error(f'Error: {e}')
             exit(1)
 
     def tz_datestring(self, lat, lng, unix_time, roundt=False):
@@ -331,7 +371,11 @@ class MetaTag:
         if sortby == 'date':
             sli = sorted(list(attribute_set), key=lambda i: dt.strptime(i, self.datestring) if self.datestring else i)
         elif sortby == 'solar':
-            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'\d+', i).group()) if int(re.search(r'\d+', i).group()) else i)
+            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()) if int(re.search(r'\d+', i).group()) else i)
+        elif sortby == 'cloud_cover':
+            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()))
+        elif sortby == 'elevation':
+            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()))
         start = sli[0]
         end = sli[-1]
         i = 0 if self.offset == 0 else 1
@@ -395,10 +439,9 @@ class MetaFetchParser:
                 raise Exception("Unable to date image "+str(lat), str(lng))
 
         except Exception as e:
-            #print(e)
+            logging.error(e)
             self.err += 1
             self.map.locs.remove(loc)
-            print("Error: ",e)
             progress.update(1)
             return None
         progress.update(1)
@@ -408,7 +451,7 @@ class MetaFetchParser:
         lat, lng = loc['lat'], loc['lng']
 
         async with aiohttp.ClientSession() as session:
-            if ('imageDate' not in loc and 'timestamp' not in loc) or ('country' not in loc and self.args.country) or self.args.heading == "drivingdirection":
+            if ('imageDate' not in loc and 'timestamp' not in loc) or ('country' not in loc and self.args.country) or self.args.heading == "drivingdirection" or self.args.no_cache_in:
                 try:
                     imagePayload = f"""
                     [
@@ -450,9 +493,15 @@ class MetaFetchParser:
                         
                         # Driving direction
                         try:
-                            loc['drivingDirection'] = loads[1][5][0][3][0][4][2][2][0] #loads[1][5][0][3][0][10][2][2][0]
+                            loc['drivingDirection'] = loads[1][5][0][3][0][4][2][2][0]
                         except IndexError:
                             loc['drivingDirection'] = None
+
+                        # Elevation
+                        try:
+                            loc['elevation'] = loads[1][5][0][3][0][2][2][1][0]
+                        except IndexError:
+                            loc['elevation'] = None
 
                         # Country
                         try:
@@ -501,7 +550,7 @@ class MetaFetchParser:
                                 loc['heading'] = 0
 
                 except Exception as e:
-                    print(e)
+                    logging.error(e)
                     self.err += 1
                     self.map.locs.remove(loc)
                     progress.update(1)
@@ -528,7 +577,7 @@ class MetaFetchParser:
                 loc['azimuth_class'] = Classifier.direction(azimuth)
                 loc['sun_event'] = Classifier.sun_event(altitude, azimuth)
         except Exception as e:
-            print(e)
+            logging.error(e)
             self.err += 1
             progress.update(1)
             return None
@@ -537,27 +586,42 @@ class MetaFetchParser:
 
     async def weather(self):
         # IMPORTANT: You are limited to ~10000 requests per day.
-        # Accuracy may vary!
+        # Accuracy may vary! Low resolution data -- hourly & imprecise lat/lng.
         
-        #TODO: elevation and rain etc
-        if(self.arg_parser.cached and 'cloudCover' in self.map.locs[0]):
+        endpoints = {
+            'clouds': 'cloud_cover',
+            'precipitation': 'precipitation',
+            'snow': 'snow_depth'
+        }
+        requested_params = [param for param in endpoints if getattr(self.arg_parser.args, param, False)]
+        METEO_ARGSTRING = ",".join([endpoints[param] for param in requested_params])
+
+        if self.arg_parser.cached and (all(endpoints[param] in self.map.locs[0] for param in requested_params) or (self.arg_parser.args.clouds and 'cloud_cover_class' in self.map.locs[0])):
             return
 
         chunk_size = 100
         loc_pool = []
+        request_count = 0
+        METEO_MAX_RATE = (600/chunk_size) # You can also self-host the API https://github.com/open-meteo/open-meteo/blob/main/docs/getting-started.md
+
+        rate_limiter = AsyncLimiter(max_rate=METEO_MAX_RATE, time_period=60)
 
         async def process_chunk(latstring, lngstring, datestring, chunk_num):
-            request_url = f"https://archive-api.open-meteo.com/v1/archive?latitude={latstring}&longitude={lngstring}&start_date={datestring}&end_date={datestring}&hourly=cloud_cover&timezone=GMT&format=json&timeformat=unixtime"
+            nonlocal request_count
+            request_url = f"https://archive-api.open-meteo.com/v1/archive?latitude={latstring}&longitude={lngstring}&start_date={datestring}&end_date={datestring}&hourly={METEO_ARGSTRING}&timezone=GMT&format=json&timeformat=unixtime"
+
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(request_url) as response:
-                        if response.status == 200:
-                            response_data = await response.json()
-                            # print(f"Chunk {chunk_num + 1}")
-                            return response_data
-                        else:
-                            print(f"Request failed for chunk {chunk_num + 1} with status code: {response.status}")
-                            return None
+                    async with rate_limiter:
+                        async with session.get(request_url) as response:
+                            request_count += 1
+                            # print(f"Request {request_count} for chunk {chunk_num + 1}")
+                            if response.status == 200:
+                                response_data = await response.json()
+                                return response_data
+                            else:
+                                print(f"Request failed for chunk {chunk_num + 1} with status code: {response.status}")
+                                return None
             except Exception as e:
                 print(f"Error processing chunk {chunk_num + 1}: {str(e)}")
                 return None
@@ -586,20 +650,37 @@ class MetaFetchParser:
             for loc in chunk_data:
                 if loc and 'hourly' in loc:
                     times = loc['hourly']['time']
-                    cloud_covers = loc['hourly']['cloud_cover']
-                    # print(loc)
-                    for time, cloud_cover in zip(times, cloud_covers):
-                        loc_pool.append({'time': time, 'cloud_cover': cloud_cover})
+                    for time in times:
+                        weather_mapping = {'time': time}
+                        
+                        if 'cloud_cover' in loc['hourly']:
+                            weather_mapping['cloud_cover'] = loc['hourly']['cloud_cover'][times.index(time)]
+                        
+                        if 'precipitation' in loc['hourly']:
+                            weather_mapping['precipitation'] = loc['hourly']['precipitation'][times.index(time)]
+                        
+                        if 'snow_depth' in loc['hourly']:
+                            weather_mapping['snow_depth'] = loc['hourly']['snow_depth'][times.index(time)]
+                        
+                        loc_pool.append(weather_mapping)
 
         for i, loc in enumerate(self.map.locs):
             min_time = loc['timestamp'] - 1800
             max_time = loc['timestamp'] + 1800
-            filtered_data = next((data for data in loc_pool if min_time <= data['time'] <= max_time), None)
+            filtered_data = [data for data in loc_pool if min_time <= data['time'] <= max_time]
             
             if filtered_data:
-                cloud_cover = filtered_data['cloud_cover']
-                loc['cloudCoverClass'] = str(Classifier.cloud_cover_event(cloud_cover))
-                loc['cloudCover'] = cloud_cover
+                closest_data = min(filtered_data, key=lambda data: abs(data['time'] - loc['timestamp']))
+                # print(f"Closest data for location {i + 1}: {closest_data}")
+
+                if closest_data and 'cloud_cover' in closest_data:
+                    cloud_cover = closest_data['cloud_cover']
+                    loc['cloud_cover_class'] = str(Classifier.cloud_cover_event(cloud_cover))
+                    loc['cloud_cover'] = cloud_cover
+                if closest_data and 'precipitation' in closest_data:
+                    loc['precipitation'] = closest_data['precipitation']
+                if closest_data and 'snow_depth' in closest_data:
+                    loc['snow_depth'] = closest_data['snow_depth']
 
 
     async def bulk_parse(self, func):
@@ -621,6 +702,7 @@ class MetaFetchParser:
 
 
 if __name__ == '__main__':
+    logging.info("Starting process")
     # ArgParser
     argparser = ArgParser()
 
@@ -651,10 +733,12 @@ if __name__ == '__main__':
         
 
         # MetaFetch
+        logging.info("Metadata fetch")
         mfparser = MetaFetchParser(map_obj, argparser)
         asyncio.run(mfparser.bulk_parse(mfparser.fetch_meta))
 
         if argparser.group_true('temporal') or argparser.group_true('terrestrial'):
+            logging.info("Temporal parsing")
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.timestamp))
             except Exception as e:
@@ -662,13 +746,15 @@ if __name__ == '__main__':
                 exit(1)
         
         if argparser.args.solar or argparser.args.SOLAR:
+            logging.info("Solar parsing")
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.solar))
             except Exception as e:
                 print("Solar data retrieval error: ",e)
                 exit(1)
         
-        if argparser.args.weather or argparser.args.WEATHER:
+        if argparser.args.clouds or argparser.args.CLOUDS or argparser.args.precipitation or argparser.args.snow:
+            logging.info("Weather parsing")
             try:
                 asyncio.run(mfparser.weather())
             except Exception as e:
@@ -684,7 +770,7 @@ if __name__ == '__main__':
         end_time = time.time()
         runtime = end_time - meta.start_time
 
-        #print(f"Tagging runtime: {round(runtime,5)} seconds")
+        logging.debug(f"Tagging runtime: {round(runtime,5)} seconds")
     elif argparser.args.command == 'delete':
         if argparser.args.cascade or argparser.args.meta:
             try:
@@ -713,3 +799,4 @@ if __name__ == '__main__':
                 print("Deleted " + str(FOLDERS['base']['files']))
             except FileNotFoundError as e:
                 print("Failed to delete: " + str(e))
+    logging.info("Finished process")

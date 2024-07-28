@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-import requests, aiohttp
+import aiohttp
 
 headers = {
     'content-type': 'application/json+protobuf'
