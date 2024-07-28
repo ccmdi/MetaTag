@@ -113,6 +113,7 @@ class ArgParser:
         self.add_argument(parser, '-U', '--CLOUDS', action='store_true', group='terrestrial')
         self.add_argument(parser, '-p', '--precipitation', action='store_true', group='terrestrial')
         self.add_argument(parser, '-w', '--snow', action='store_true', group='terrestrial')
+        self.add_argument(parser, '-e', '--elevation', action='store_true', group='terrestrial')
         self.add_argument(parser, '--heading', type=str, default=None, help='Update heading; orient towards object i.e. solar', group='terrestrial')
         self.add_argument(parser, '-drivingdirection', action='store_true', help='Update driving direction', group='terrestrial')
 
@@ -150,7 +151,8 @@ class MetaTag:
             'dates': set(),
             'altitudes': set(),
             'azimuths': set(),
-            'cloud_cover': set()
+            'cloud_cover': set(),
+            'elevation': set()
         }
         
         self.tf = TimezoneFinder()
@@ -205,12 +207,14 @@ class MetaTag:
                             else:
                                 raise ValueError("Solar data not found")
                     if self.args.clouds or self.args.CLOUDS:
-                        cloud_cover_class = str(item['cloudCoverClass']) if 'cloudCoverClass' in item else None #CHANGE name & figure out why error thrown
+                        cloud_cover_class = str(item['cloudCoverClass']) if 'cloudCoverClass' in item else None
                         cloud_cover = str(item['cloudCover']) if 'cloudCover' in item else None
                     if self.args.precipitation:
                         precipitation = str(item['precipitation']) if 'precipitation' in item and item['precipitation'] and item['precipitation'] > 0 else None
                     if self.args.snow:
                         snow_cover = str(item['snowCover']) if 'snowCover' in item and item['snowCover'] and item['snowCover'] > 0 else None
+                    if self.args.elevation:
+                        elevation = str(round(float(item['elevation']))) if 'elevation' in item and item['elevation'] else None
 
 
                     # Tagging
@@ -242,10 +246,14 @@ class MetaTag:
                             self.attr_sets['cloud_cover'].add(cloud_cover)
                     if self.args.precipitation:
                         if precipitation:
-                            tags.append("PD "+precipitation)
+                            tags.append("PRCP "+precipitation)
                     if self.args.snow:
                         if snow_cover:
                             tags.append("SNOW "+snow_cover)
+                    if self.args.elevation:
+                        if elevation:
+                            tags.append("ELEV "+elevation)
+                            self.attr_sets['elevation'].add("ELEV "+elevation)
 
                     # Prune empty tags
                     tags = [tag for tag in tags if tag]
@@ -286,6 +294,10 @@ class MetaTag:
             if self.args.CLOUDS:
                 sorted_cloud_cover = self.order_tags(self.attr_sets['cloud_cover'], sortby='cloud_cover')
                 self.offset += sorted_cloud_cover[2]
+            
+            if self.args.elevation:
+                sorted_elevation = self.order_tags(self.attr_sets['elevation'], sortby='elevation')
+                self.offset += sorted_elevation[2]
 
         except Exception as e:
             logging.error(f'Error: {e}')
@@ -359,9 +371,11 @@ class MetaTag:
         if sortby == 'date':
             sli = sorted(list(attribute_set), key=lambda i: dt.strptime(i, self.datestring) if self.datestring else i)
         elif sortby == 'solar':
-            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'\d+', i).group()) if int(re.search(r'\d+', i).group()) else i)
+            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()) if int(re.search(r'\d+', i).group()) else i)
         elif sortby == 'cloud_cover':
-            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'\d+', i).group()))
+            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()))
+        elif sortby == 'elevation':
+            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()))
         start = sli[0]
         end = sli[-1]
         i = 0 if self.offset == 0 else 1
@@ -437,7 +451,7 @@ class MetaFetchParser:
         lat, lng = loc['lat'], loc['lng']
 
         async with aiohttp.ClientSession() as session:
-            if ('imageDate' not in loc and 'timestamp' not in loc) or ('country' not in loc and self.args.country) or self.args.heading == "drivingdirection":
+            if ('imageDate' not in loc and 'timestamp' not in loc) or ('country' not in loc and self.args.country) or self.args.heading == "drivingdirection" or self.args.no_cache_in:
                 try:
                     imagePayload = f"""
                     [
@@ -479,9 +493,15 @@ class MetaFetchParser:
                         
                         # Driving direction
                         try:
-                            loc['drivingDirection'] = loads[1][5][0][3][0][4][2][2][0] #loads[1][5][0][3][0][10][2][2][0]
+                            loc['drivingDirection'] = loads[1][5][0][3][0][4][2][2][0]
                         except IndexError:
                             loc['drivingDirection'] = None
+
+                        # Elevation
+                        try:
+                            loc['elevation'] = loads[1][5][0][3][0][2][2][1][0]
+                        except IndexError:
+                            loc['elevation'] = None
 
                         # Country
                         try:
@@ -567,8 +587,6 @@ class MetaFetchParser:
     async def weather(self):
         # IMPORTANT: You are limited to ~10000 requests per day.
         # Accuracy may vary! Low resolution data -- hourly & imprecise lat/lng.
-        
-        #TODO: elevation
         
         endpoints = {
             'clouds': 'cloud_cover',
