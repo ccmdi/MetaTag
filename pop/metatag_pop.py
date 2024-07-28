@@ -1,4 +1,4 @@
-# EXPERIMENTAL: Potential feature in metatag.py, requires TIF data such as "https://hub.worldpop.org/geodata/listing?id=64" to function
+# EXPERIMENTAL: Potential feature in metatag.py
 
 import json
 import rasterio
