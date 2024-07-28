@@ -11,6 +11,7 @@ This is a tool designed to take simple latitude/longitude JSON's and add various
 	* Locality
 	* Population[^1]
 	* Elevation
+	* ~~Elevation gradient~~
 * Terrestrial data
 	* Solar azimuth (direction)
 	* Solar altitude (height)
