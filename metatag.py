@@ -21,7 +21,7 @@ from tqdm import tqdm
 import logging
 
 # Local
-from sv_map import SVMap, Classifier
+from sv_map import SVMap, Classifier, verify_extra, force_extra, clear_tags
 from get_date import find_accurate_timestamp
 
 FILE = Path(__file__).parent
@@ -98,6 +98,7 @@ class ArgParser:
         self.add_argument(parser, '-n', '--no-cache-in', action='store_true', help='No cache input', group='files')
         self.add_argument(parser, '-N', '--no-cache-out', action='store_true', help='No cache output', group='files')
         self.add_argument(parser, '-M', '--meta', action='store_true', help='Meta file only', group='files')
+        self.add_argument(parser, '-o', '--overwrite', action='store_true', help='Overwrite tags', group='files')
         self.add_argument(parser, '--color', type=str, help='Colorscale color', default="red", group='cosmetic')
         self.add_argument(parser, '--color2', type=str, help='Colorscale color 2', default="red", group='cosmetic')
         self.add_argument(parser, '-t','--time', action='store_true', group='temporal')
@@ -158,7 +159,7 @@ class MetaTag:
             'dates': set(),
             'altitudes': set(),
             'azimuths': set(),
-            'cloud_cover': set(),
+            'cloudCover': set(),
             'elevation': set()
         }
         
@@ -209,8 +210,8 @@ class MetaTag:
                         try:
                             altitude = round(float(item['altitude']))
                             azimuth = round(float(item['azimuth']))
-                            altitude_class = str(item['altitude_class'])
-                            azimuth_class = str(item['azimuth_class'])
+                            altitude_class = str(item['altitudeClass'])
+                            azimuth_class = str(item['azimuthClass'])
                             sun_event = item['sun_event']
 
                             if self.args.solar:
@@ -232,13 +233,13 @@ class MetaTag:
                                 raise ValueError("Solar data not found")
 
                     if self.args.clouds or self.args.CLOUDS:
-                        cloud_cover = item.get('cloud_cover')
-                        if self.args.clouds and 'cloud_cover_class' in item:
-                            tags.append(str(item['cloud_cover_class']))
+                        cloud_cover = item.get('cloudCover')
+                        if self.args.clouds and 'cloudCoverClass' in item:
+                            tags.append(str(item['cloudCoverClass']))
                         if self.args.CLOUDS and cloud_cover:
                             cloud_tag = f"CLOUD {cloud_cover}"
                             tags.append(cloud_tag)
-                            self.attr_sets['cloud_cover'].add(cloud_tag)
+                            self.attr_sets['cloudCover'].add(cloud_tag)
 
                     if self.args.precipitation and 'precipitation' in item:
                         precipitation = item['precipitation']
@@ -258,13 +259,11 @@ class MetaTag:
                             self.attr_sets['elevation'].add(elevation_str)
 
                     if tags:
-                        extra = item.setdefault("extra", {})
-                        if "tags" in extra:
-                            if not isinstance(extra["tags"], list):
-                                extra["tags"] = [extra["tags"]]
-                            extra["tags"].extend(tags)
+                        if verify_extra(item, tags=True):
+                            item["extra"]["tags"].extend(tags)
                         else:
-                            extra["tags"] = tags
+                            item = force_extra(item, tags=tags)
+                            item["extra"]["tags"] = tags
 
                 except SVMap.CacheError as e:
                     logging.error(e)
@@ -277,6 +276,8 @@ class MetaTag:
             if not CONFIG['mapMakingAppStyles']:
                 return
 
+            self.map.verify_map_styles()
+
             logging.info("Order tags - temporal")
             if self.arg_parser.group_true('temporal'):
                 sorted_dates = self.order_tags(self.attr_sets['dates'])
@@ -285,19 +286,19 @@ class MetaTag:
 
             logging.info("Order tags - solar")
             if self.args.SOLAR:
-                sorted_altitude = self.order_tags(self.attr_sets['altitudes'], sortby='solar')
+                sorted_altitude = self.order_tags(self.attr_sets['altitudes'], sortby='parseint')
                 self.offset += sorted_altitude[2]
-                sorted_azimuth = self.order_tags(self.attr_sets['azimuths'], sortby='solar')
+                sorted_azimuth = self.order_tags(self.attr_sets['azimuths'], sortby='parseint')
                 self.offset += sorted_azimuth[2]
             
             logging.info("Order tags - clouds")
             if self.args.CLOUDS:
-                sorted_cloud_cover = self.order_tags(self.attr_sets['cloud_cover'], sortby='cloud_cover')
+                sorted_cloud_cover = self.order_tags(self.attr_sets['cloudCover'], sortby='parseint')
                 self.offset += sorted_cloud_cover[2]
             
             logging.info("Order tags - elevation")
             if self.args.elevation:
-                sorted_elevation = self.order_tags(self.attr_sets['elevation'], sortby='elevation')
+                sorted_elevation = self.order_tags(self.attr_sets['elevation'], sortby='parseint')
                 self.offset += sorted_elevation[2]
 
         except Exception as e:
@@ -364,19 +365,10 @@ class MetaTag:
         Returns:
             list: A list containing the start value, end value, and offset.
         """
-        if 'extra' not in self.map.data:
-            self.map.data['extra'] = {}
-        if 'tags' not in self.map.data['extra']:
-            self.map.data['extra']['tags'] = {}
-        
         if sortby == 'date':
             sli = sorted(list(attribute_set), key=lambda i: dt.strptime(i, self.datestring) if self.datestring else i)
-        elif sortby == 'solar':
-            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()) if int(re.search(r'\d+', i).group()) else i)
-        elif sortby == 'cloud_cover':
-            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()))
-        elif sortby == 'elevation':
-            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()))
+        elif sortby == 'parseint':
+            sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()) if int(re.search(r'-?\d+', i).group()) else i)
         start = sli[0]
         end = sli[-1]
         i = 0 if self.offset == 0 else 1
@@ -385,7 +377,7 @@ class MetaTag:
             self.map.data["extra"]["tags"][item] = {"order": i+self.offset}
             color_scale = [int(start + (end - start) * (i / len(sli))) for start, end in zip(self.color2, self.color)]
             self.map.data["extra"]["tags"][item]['color'] = color_scale
-        return [start,end,i]
+        return [start, end, i]
 
 class MetaFetchParser:
     def __init__(self, map_obj, args, radius=30, chunk_size=15):
@@ -411,9 +403,8 @@ class MetaFetchParser:
         try:
             lat, lng = loc['lat'], loc['lng']
             month = None
-            if 'extra' not in loc:
-                loc['extra'] = {}
-                
+            loc = force_extra(loc, tags=True)
+
             if loc.get('imageDate'):
                 month = loc['imageDate']
             elif loc.get('extra').get('panoDate'):
@@ -590,14 +581,18 @@ class MetaFetchParser:
         # Accuracy may vary! Low resolution data -- hourly & imprecise lat/lng.
         
         endpoints = {
-            'clouds': 'cloud_cover',
-            'precipitation': 'precipitation',
-            'snow': 'snow_depth'
+            'clouds': ['cloud_cover', 'cloudCover'],
+            'precipitation': ['precipitation', 'precipitation'],
+            'snow': ['snow_depth', 'snowDepth']
         }
         requested_params = [param for param in endpoints if getattr(self.arg_parser.args, param, False)]
-        METEO_ARGSTRING = ",".join([endpoints[param] for param in requested_params])
+        METEO_ARGSTRING = ",".join([endpoints[param][0] for param in requested_params])
 
-        if self.arg_parser.cached and (all(endpoints[param] in self.map.locs[0] for param in requested_params) or (self.arg_parser.args.clouds and 'cloud_cover_class' in self.map.locs[0])):
+        total_locations = len(self.map.locs)
+        progress = tqdm(total=total_locations, desc=self.PROCESS_NAMES[self.weather])
+
+        if self.arg_parser.cached and (all(endpoints[param][1] in self.map.locs[0] for param in requested_params) or (self.arg_parser.args.clouds and 'cloudCoverClass' in self.map.locs[0])):
+            progress.update(total_locations)
             return
 
         chunk_size = 100
@@ -607,7 +602,7 @@ class MetaFetchParser:
 
         rate_limiter = AsyncLimiter(max_rate=METEO_MAX_RATE, time_period=60)
 
-        async def process_chunk(latstring, lngstring, datestring, chunk_num):
+        async def process_chunk(latstring, lngstring, datestring, chunk_num, progress):
             nonlocal request_count
             request_url = f"https://archive-api.open-meteo.com/v1/archive?latitude={latstring}&longitude={lngstring}&start_date={datestring}&end_date={datestring}&hourly={METEO_ARGSTRING}&timezone=GMT&format=json&timeformat=unixtime"
 
@@ -616,6 +611,7 @@ class MetaFetchParser:
                     async with rate_limiter:
                         async with session.get(request_url) as response:
                             request_count += 1
+                            progress.update(len(latstring.split(',')))
                             # print(f"Request {request_count} for chunk {chunk_num + 1}")
                             if response.status == 200:
                                 response_data = await response.json()
@@ -624,6 +620,7 @@ class MetaFetchParser:
                                 print(f"Request failed for chunk {chunk_num + 1} with status code: {response.status}")
                                 return None
             except Exception as e:
+                progress.update(len(latstring.split(',')))
                 logging.error(f"Error processing chunk {chunk_num + 1}: {str(e)}")
                 return None
 
@@ -644,8 +641,13 @@ class MetaFetchParser:
                 chunks.append((latstring[:-1], lngstring[:-1], datestring[:-1]))
                 latstring, lngstring, datestring = "", "", ""
 
-        tasks = [process_chunk(lat, lng, date, i) for i, (lat, lng, date) in enumerate(chunks)]
-        chunk_results = await asyncio.gather(*tasks)
+        async def process_chunks():
+            tasks = [asyncio.create_task(process_chunk(lat, lng, date, i, progress)) 
+                    for i, (lat, lng, date) in enumerate(chunks)]
+            return await asyncio.gather(*tasks)
+
+        chunk_results = await process_chunks()
+        progress.close()
 
         for chunk_data in chunk_results:
             for loc in chunk_data:
@@ -676,12 +678,12 @@ class MetaFetchParser:
 
                 if closest_data and 'cloud_cover' in closest_data:
                     cloud_cover = closest_data['cloud_cover']
-                    loc['cloud_cover_class'] = str(Classifier.cloud_cover_event(cloud_cover))
-                    loc['cloud_cover'] = cloud_cover
+                    loc['cloudCoverClass'] = str(Classifier.cloud_cover_event(cloud_cover))
+                    loc['cloudCover'] = cloud_cover
                 if closest_data and 'precipitation' in closest_data:
                     loc['precipitation'] = closest_data['precipitation']
                 if closest_data and 'snow_depth' in closest_data:
-                    loc['snow_depth'] = closest_data['snow_depth']
+                    loc['snowDepth'] = closest_data['snow_depth']
 
 
     async def bulk_parse(self, func):
@@ -805,18 +807,16 @@ if __name__ == '__main__':
     elif argparser.args.command == 'clear':
         clear_map = SVMap(argparser.args.file)
         removed = 0
+        total = len(clear_map.locs)
 
         for loc in clear_map.locs:
-            if 'extra' in loc:
-                if 'tags' in loc['extra'] and loc['extra']['tags']:
-                    removed += len(loc['extra']['tags'])
-                loc['extra']['tags'] = []
-            else:
-                loc['extra'] = {"tags": []}
+            if verify_extra(loc, tags=True):
+                removed += len(loc['extra']['tags'])
+                loc = clear_tags(loc)
         if(argparser.filepath.parent.absolute() == FOLDERS['base']['path']):
             conf = input("Are you sure you want to clear the base file? (y/n) ")
             if conf == 'y':
-                print(str(removed) + " tags removed")
+                print(str(removed) + " tags removed from " + str(total) + " locations")
                 clear_map.save(argparser.filepath.absolute())
             else:
                 exit(0)

@@ -77,6 +77,12 @@ class SVMap:
                 if key not in self.CRITICAL_FIELDS:
                     del loc[key]
         return self
+    
+    def verify_map_styles(self):
+        if 'extra' not in self.data:
+            self.data['extra'] = {}
+        if 'tags' not in self.data['extra']:
+            self.data['extra']['tags'] = {}
 
     def __str__(self):
          return self.data['name'] if 'name' in self.data else "" + " (" + str(len(self.locs)) + " locations)"
@@ -151,5 +157,21 @@ class Classifier:
         else:
             return "Overcast"
 
+def verify_extra(loc, tags = False):
+    if 'extra' not in loc:
+        return False
+    if tags and ('tags' not in loc['extra'] or not loc['extra']['tags'] or not isinstance(loc['extra']['tags'], list)):
+        return False
+    return True
 
+def force_extra(loc, tags = False):
+    if 'extra' not in loc:
+        loc['extra'] = {}
+    if 'tags' not in loc['extra'] and tags:
+        loc['extra']['tags'] = []
+    return loc
 
+def clear_tags(loc):
+    if 'extra' in loc and 'tags' in loc['extra']:
+        loc['extra']['tags'] = []
+    return loc
