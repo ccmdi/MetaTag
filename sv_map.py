@@ -12,6 +12,7 @@ class SVMap:
         data (dict): The top-level map data.
         locs (list): The list of coordinate data.
     """
+    CRITICAL_FIELDS = ['lat', 'lng', 'heading', 'panoId', 'extra', 'pitch']
 
     def __init__(self, file):
         with open(file) as f:
@@ -66,7 +67,16 @@ class SVMap:
             print("Saved to " + str(file))
         except:
              print("Failed to save to " + str(file))
-         
+    
+    def purge(self):
+        """
+        Removes all non-critical fields from the map data.
+        """
+        for loc in self.locs:
+            for key in list(loc.keys()):
+                if key not in self.CRITICAL_FIELDS:
+                    del loc[key]
+        return self
 
     def __str__(self):
          return self.data['name'] if 'name' in self.data else "" + " (" + str(len(self.locs)) + " locations)"

@@ -97,6 +97,7 @@ class ArgParser:
         self.add_argument(parser, 'file', type=str, help='Path to CSV or JSON file', group='files')
         self.add_argument(parser, '-n', '--no-cache-in', action='store_true', help='No cache input', group='files')
         self.add_argument(parser, '-N', '--no-cache-out', action='store_true', help='No cache output', group='files')
+        self.add_argument(parser, '-M', '--meta', action='store_true', help='Meta file only', group='files')
         self.add_argument(parser, '--color', type=str, help='Colorscale color', default="red", group='cosmetic')
         self.add_argument(parser, '--color2', type=str, help='Colorscale color 2', default="red", group='cosmetic')
         self.add_argument(parser, '-t','--time', action='store_true', group='temporal')
@@ -244,10 +245,10 @@ class MetaTag:
                         if precipitation and precipitation > 0:
                             tags.append(f"PRCP {precipitation}")
 
-                    if self.args.snow and 'snowCover' in item:
-                        snow_cover = item['snowCover']
-                        if snow_cover and snow_cover > 0:
-                            tags.append(f"SNOW {snow_cover}")
+                    if self.args.snow and 'snow_depth' in item:
+                        snow_depth = item['snow_depth']
+                        if snow_depth and snow_depth > 0:
+                            tags.append(f"SNOW {snow_depth}")
 
                     if self.args.elevation and 'elevation' in item:
                         elevation = item['elevation']
@@ -257,15 +258,13 @@ class MetaTag:
                             self.attr_sets['elevation'].add(elevation_str)
 
                     if tags:
-                        if "extra" in item:
-                            if "tags" in item["extra"]:
-                                if not isinstance(item['extra']['tags'], list):
-                                    item['extra']['tags'] = [item['extra']['tags']]
-                                item["extra"]["tags"].extend(tags)
-                            else:
-                                item["extra"]["tags"] = tags
+                        extra = item.setdefault("extra", {})
+                        if "tags" in extra:
+                            if not isinstance(extra["tags"], list):
+                                extra["tags"] = [extra["tags"]]
+                            extra["tags"].extend(tags)
                         else:
-                            item["extra"] = {"tags": tags}
+                            extra["tags"] = tags
 
                 except SVMap.CacheError as e:
                     logging.error(e)
@@ -273,25 +272,30 @@ class MetaTag:
                 except Exception as e:
                     logging.error(e)
 
+            logging.info("Purge map")
             self.map.purge()
             if not CONFIG['mapMakingAppStyles']:
                 return
 
+            logging.info("Order tags - temporal")
             if self.arg_parser.group_true('temporal'):
                 sorted_dates = self.order_tags(self.attr_sets['dates'])
                 self.offset += sorted_dates[2]
                 # print("Datetime span:", sorted_dates[0], "to", sorted_dates[1])
 
+            logging.info("Order tags - solar")
             if self.args.SOLAR:
                 sorted_altitude = self.order_tags(self.attr_sets['altitudes'], sortby='solar')
                 self.offset += sorted_altitude[2]
                 sorted_azimuth = self.order_tags(self.attr_sets['azimuths'], sortby='solar')
                 self.offset += sorted_azimuth[2]
             
+            logging.info("Order tags - clouds")
             if self.args.CLOUDS:
                 sorted_cloud_cover = self.order_tags(self.attr_sets['cloud_cover'], sortby='cloud_cover')
                 self.offset += sorted_cloud_cover[2]
             
+            logging.info("Order tags - elevation")
             if self.args.elevation:
                 sorted_elevation = self.order_tags(self.attr_sets['elevation'], sortby='elevation')
                 self.offset += sorted_elevation[2]
@@ -355,7 +359,7 @@ class MetaTag:
 
         Args:
             attribute_set (set): The set of attributes to be ordered.
-            sortby (str): The sort order ('date' or 'solar').
+            sortby (str): The sort order.
 
         Returns:
             list: A list containing the start value, end value, and offset.
@@ -410,13 +414,13 @@ class MetaFetchParser:
             if 'extra' not in loc:
                 loc['extra'] = {}
                 
-            if 'imageDate' in loc and loc['imageDate']:
+            if loc.get('imageDate'):
                 month = loc['imageDate']
-            elif 'panoDate' in loc['extra'] and loc['extra']['panoDate']:
+            elif loc.get('extra').get('panoDate'):
                 month = loc['extra']['panoDate']
-            elif 'timestamp' in loc and loc['timestamp']:
+            elif loc.get('timestamp'):
                 month = dt.fromtimestamp(loc['timestamp'], pytz.utc).strftime('%Y-%m')
-            elif self.args.load and 'tags' in loc['extra']:
+            elif self.args.load and loc.get('extra').get('tags'):
                 tags = loc['extra']['tags']
                 months = [month.lower() for month in calendar.month_name[1:]] + [month.lower() for month in calendar.month_abbr[1:]]
                 years = [str(year) for year in range(2007,  dt.now().year+1)]
@@ -429,7 +433,7 @@ class MetaFetchParser:
                     month = matching_year + "-" + month_number
                 
             if month:
-                if 'timestamp' not in loc:
+                if not loc.get('timestamp'):
                     timestamp = await find_accurate_timestamp(lat, lng, month, self.RADIUS, self.args.accuracy)
                     loc['timestamp'] = timestamp
             else:
@@ -558,18 +562,18 @@ class MetaFetchParser:
 
     async def solar(self, loc, progress):
         lat, lng = loc['lat'], loc['lng']
-        if 'timestamp' not in loc:
+        if not loc.get('timestamp'):
             raise ValueError("Timestamp not found")
         
         timestamp = loc['timestamp']
         timestamp_date = dt.fromtimestamp(timestamp, pytz.utc)
         try:
-            if('azimuth' not in loc or 'altitude' not in loc):
+            if(not loc.get('azimuth') or not loc.get('altitude')):
                 altitude = get_altitude(lat, lng, timestamp_date)
                 azimuth = get_azimuth(lat, lng, timestamp_date)
                 loc['altitude'] = altitude
                 loc['azimuth'] = azimuth
-            if('altitude_class' not in loc or 'azimuth_class' not in loc or 'sun_event' not in loc):
+            if(not loc.get('altitude_class') or not loc.get('azimuth_class') or not loc.get('sun_event')):
                 loc['altitude_class'] = Classifier.altitude(altitude)
                 loc['azimuth_class'] = Classifier.direction(azimuth)
                 loc['sun_event'] = Classifier.sun_event(altitude, azimuth)
@@ -761,6 +765,8 @@ if __name__ == '__main__':
         map_obj.save(Path(f"{FOLDERS['meta']['path']}/{FOLDERS['base']['files'].stem}.json").absolute()) # Save to meta folder
         
         # MetaTag
+        if argparser.args.meta:
+            exit(0)
         meta = MetaTag(map_obj, argparser)
         map_obj.save(Path(f"{FOLDERS['tagged']['path']}/{FOLDERS['base']['files'].stem}-{arg_string}.json"))
 
