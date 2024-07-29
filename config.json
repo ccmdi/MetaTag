@@ -5,6 +5,7 @@
         "tagged": "./maps/tagged"
     },
     "compressFile": false,
+    "keepUnknownFields": false,
     "mapMakingAppStyles": true,
     "debug": false
 }

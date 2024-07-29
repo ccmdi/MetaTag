@@ -212,7 +212,7 @@ class MetaTag:
                             azimuth = round(float(item['azimuth']))
                             altitude_class = str(item['altitudeClass'])
                             azimuth_class = str(item['azimuthClass'])
-                            sun_event = item['sun_event']
+                            sun_event = item['sunEvent']
 
                             if self.args.solar:
                                 tags.extend([f"#{altitude_class}", f"@{azimuth_class}"])
@@ -246,8 +246,8 @@ class MetaTag:
                         if precipitation and precipitation > 0:
                             tags.append(f"PRCP {precipitation}")
 
-                    if self.args.snow and 'snow_depth' in item:
-                        snow_depth = item['snow_depth']
+                    if self.args.snow and 'snowDepth' in item:
+                        snow_depth = item['snowDepth']
                         if snow_depth and snow_depth > 0:
                             tags.append(f"SNOW {snow_depth}")
 
@@ -559,15 +559,18 @@ class MetaFetchParser:
         timestamp = loc['timestamp']
         timestamp_date = dt.fromtimestamp(timestamp, pytz.utc)
         try:
-            if(not loc.get('azimuth') or not loc.get('altitude')):
+            if not loc.get('altitude') or not loc.get('azimuth'):
                 altitude = get_altitude(lat, lng, timestamp_date)
                 azimuth = get_azimuth(lat, lng, timestamp_date)
                 loc['altitude'] = altitude
                 loc['azimuth'] = azimuth
-            if(not loc.get('altitude_class') or not loc.get('azimuth_class') or not loc.get('sun_event')):
-                loc['altitude_class'] = Classifier.altitude(altitude)
-                loc['azimuth_class'] = Classifier.direction(azimuth)
-                loc['sun_event'] = Classifier.sun_event(altitude, azimuth)
+            elif self.arg_parser.cached:
+                altitude = loc['altitude']
+                azimuth = loc['azimuth']
+            if(not loc.get('altitudeClass') or not loc.get('azimuthClass') or not loc.get('sunEvent')):
+                loc['altitudeClass'] = Classifier.altitude(altitude)
+                loc['azimuthClass'] = Classifier.direction(azimuth)
+                loc['sunEvent'] = Classifier.sun_event(altitude, azimuth)
         except Exception as e:
             logging.error(e)
             self.err += 1
@@ -763,7 +766,10 @@ if __name__ == '__main__':
             except Exception as e:
                 logging.error("Weather data retrieval error: ",e)
                 exit(1)
-
+        
+        if not CONFIG['keepUnknownFields']:
+            map_obj.purge(SVMap.KNOWN_FIELDS)
+            
         map_obj.save(Path(f"{FOLDERS['meta']['path']}/{FOLDERS['base']['files'].stem}.json").absolute()) # Save to meta folder
         
         # MetaTag
