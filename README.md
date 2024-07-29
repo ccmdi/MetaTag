@@ -25,7 +25,7 @@ This is a tool designed to take simple latitude/longitude JSON's and add various
 
 The underlying script works around the `maps` folder; the paths can be configured in [config.json](https://github.com/ccmdi/MetaTag/blob/main/config.json). `maps/base` is a convenient folder to store all maps you work with, however you can run the script from anywhere. For any map you wish to tag, there are two options:
 * ~~Run `MetaTag.exe` for a simple GUI and visualization~~
-* `python metatag.py <mapfile> <arguments>`
+* `python metatag.py <command: tag, delete, clear> <mapfile> <arguments>`
 
 # GUI
 For any given map, simply upload the file. You will see a view showing settings to add on the left, and a simplistic map viewer on the right. Checking the checkboxes and clicking submit will run the script with for desired attributes, and refresh the map view with the new map file. It will also be outputted to the `maps/tagged` folder for external use.
