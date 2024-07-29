@@ -17,7 +17,7 @@ class SVMap {
         // this.markers = [];
 
         this.map = L.map('map', {zoomControl: false});
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}' + (L.Browser.retina ? '@2x.png' : '.png'), {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(this.map);
 
@@ -25,7 +25,7 @@ class SVMap {
         this.pixiOverlay = L.pixiOverlay((utils) => {
             const renderer = utils.getRenderer();
             const container = utils.getContainer();
-            let markerTexture = renderer.generateTexture(new PIXI.Graphics().beginFill(0x000000).drawCircle(0, 0, config.markerSize).endFill());
+            let markerTexture = renderer.generateTexture(new PIXI.Graphics().beginFill(0x17388e).drawCircle(0, 0, config.markerSize).endFill());
             const project = this.pixiOverlay.utils.latLngToLayerPoint;
 
             this.pixiContainer.removeChildren();
@@ -113,21 +113,29 @@ class SVMap {
             }
         
             for (const [key, value] of Object.entries(proximalNode.nearest)) {
+                if(value === null) continue;
                 if ((typeof value === "string" || typeof value === "number") && !config.attrRedundantTooltip.has(key)) {
                     if (key === "imageDate" && proximalNode.nearest.timestamp) continue;
+                    if (key === 'elevation') {
+                        workingText.push(`${formatAttrString(key)}: ${value.toFixed(2)}m`);
+                        continue;
+                    }
+                    if (key === 'heading' || key === 'pitch' || key === 'drivingDirection') {
+                        workingText.push(`${formatAttrString(key)}: ${value.toFixed(2)}°`);
+                        continue;
+                    }
                     if (key === 'timestamp') {
                         const tz = tzlookup(proximalNode.nearest.lat, proximalNode.nearest.lng);
                         const date = new Date(value * 1000);
                         const formattedDate = date.toLocaleString('en-US', {
                             timeZone: tz,
                             year: 'numeric', month: 'short', day: 'numeric',
-                            hour: '2-digit', minute: '2-digit', second: '2-digit',
-                            timeZoneName: 'short'
+                            hour: '2-digit', minute: '2-digit', second: '2-digit'
                         });
-                        workingText.push(`${formatAttrString(key)}: ${formattedDate} (${tz})`);
+                        workingText.push(`${formatAttrString(key)}: ${formattedDate}`);
                     } else if (!['country', 'state', 'locality'].includes(key)) {
                         workingText.push(`${formatAttrString(key)}: ${value}`);
-                    }
+                    } 
                 }
             }
         

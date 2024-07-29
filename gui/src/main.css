@@ -116,8 +116,8 @@ body {
 }
 
 
-/*Submit button */
-#submitButtonWrapper {
+/*Tag button */
+#tagButtonWrapper {
     text-align: center;
     height: 40px;
     padding-top: 10px;
@@ -125,7 +125,7 @@ body {
     margin-bottom: 50px;
 }
 
-#submitButton {
+#tagButton {
     display: inline-block;
     margin: 0 auto;
     width: 80%;
@@ -147,8 +147,9 @@ body {
 
 /* Filter */
 #filterWrapper {
-    text-align: center;
-    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 #filter, #filterValue {

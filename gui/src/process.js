@@ -60,9 +60,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const filters = document.getElementsByClassName('filter');
     const filterValues = document.getElementsByClassName('filterValue');
 
-    const submitButton = document.getElementById('submitButton');
+    const tagButton = document.getElementById('tagButton');
 
-    submitButton.addEventListener('click', function(event) {
+    tagButton.addEventListener('click', function(event) {
         event.preventDefault();
         console.log(progress);
         
@@ -197,54 +197,54 @@ window.electronAPI.onPythonScriptPid((event, pid) => {
 
 
 
-class FPSMeter {
-    constructor() {
-        this.fps = 0;
-        this.frames = 0;
-        this.lastTime = performance.now();
-    }
+// class FPSMeter {
+//     constructor() {
+//         this.fps = 0;
+//         this.frames = 0;
+//         this.lastTime = performance.now();
+//     }
 
-    update() {
-        this.frames++;
-        const time = performance.now();
-        if (time >= this.lastTime + 1000) {
-            this.fps = Math.round((this.frames * 1000) / (time - this.lastTime));
-            this.lastTime = time;
-            this.frames = 0;
-        }
-        return this.fps;
-    }
-}
+//     update() {
+//         this.frames++;
+//         const time = performance.now();
+//         if (time >= this.lastTime + 1000) {
+//             this.fps = Math.round((this.frames * 1000) / (time - this.lastTime));
+//             this.lastTime = time;
+//             this.frames = 0;
+//         }
+//         return this.fps;
+//     }
+// }
 
 
-const fpsMeter = new FPSMeter();
-let fpsDisplay;
+// const fpsMeter = new FPSMeter();
+// let fpsDisplay;
 
-// Create FPS display element
-function createFPSDisplay() {
-    fpsDisplay = document.createElement('div');
-    fpsDisplay.style.position = 'fixed';
-    fpsDisplay.style.top = '10px';
-    fpsDisplay.style.left = '10px';
-    fpsDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    fpsDisplay.style.color = 'white';
-    fpsDisplay.style.padding = '5px';
-    fpsDisplay.style.borderRadius = '5px';
-    fpsDisplay.style.fontFamily = 'Arial, sans-serif';
-    fpsDisplay.style.fontSize = '14px';
-    fpsDisplay.style.zIndex = '9999';
-    document.body.appendChild(fpsDisplay);
-}
+// // Create FPS display element
+// function createFPSDisplay() {
+//     fpsDisplay = document.createElement('div');
+//     fpsDisplay.style.position = 'fixed';
+//     fpsDisplay.style.top = '10px';
+//     fpsDisplay.style.left = '10px';
+//     fpsDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+//     fpsDisplay.style.color = 'white';
+//     fpsDisplay.style.padding = '5px';
+//     fpsDisplay.style.borderRadius = '5px';
+//     fpsDisplay.style.fontFamily = 'Arial, sans-serif';
+//     fpsDisplay.style.fontSize = '14px';
+//     fpsDisplay.style.zIndex = '9999';
+//     document.body.appendChild(fpsDisplay);
+// }
 
-// Update FPS display
-function updateFPSDisplay() {
-    const fps = fpsMeter.update();
-    if (fpsDisplay) {
-        fpsDisplay.textContent = `FPS: ${fps}`;
-    }
-    requestAnimationFrame(updateFPSDisplay);
-}
+// // Update FPS display
+// function updateFPSDisplay() {
+//     const fps = fpsMeter.update();
+//     if (fpsDisplay) {
+//         fpsDisplay.textContent = `FPS: ${fps}`;
+//     }
+//     requestAnimationFrame(updateFPSDisplay);
+// }
 
-// Call these functions to set up the FPS display
-createFPSDisplay();
-updateFPSDisplay();
+// // Call these functions to set up the FPS display
+// createFPSDisplay();
+// updateFPSDisplay();
