@@ -70,6 +70,9 @@ class ArgParser:
 
         self.delete_parser = self.subparsers.add_parser('delete', help='Delete a file')
         self.add_delete_arguments(self.delete_parser)
+
+        self.clear_parser = self.subparsers.add_parser('clear', help='Clear tags for meta file')
+        self.add_clear_arguments(self.clear_parser)
         
         self.args = self.parser.parse_args()
         self.userparser =  self.subparsers.choices[self.args.command]
@@ -123,6 +126,9 @@ class ArgParser:
         self.add_argument(parser, '-m', '--meta', action='store_true', help='Delete meta file')
         self.add_argument(parser, '-t', '--tagged', action='store_true', help='Deleted tagged file(s)')
         self.add_argument(parser, '-c', '--cascade', action='store_true', help='Delete all associated files')
+    
+    def add_clear_arguments(self, parser):
+        self.add_argument(parser, 'file', type=str, help='Path to file to clear')
 
     def add_argument(self, parser, *args, **kwargs):
         group = kwargs.pop('group', None)
@@ -174,111 +180,102 @@ class MetaTag:
             # Data processing
             for i, item in enumerate(self.map.locs):
                 try:
-                    # Comprehension
-                    lat = float(item['lat'])
-                    lng = float(item['lng'])
+                    lat, lng = float(item['lat']), float(item['lng'])
+                    tags = []
+
                     if self.arg_parser.group_true('temporal'):
                         unix_time = float(item['timestamp'])
-
-                        if unix_time and not (now - 20*365*24*60*60 <= unix_time <= now):
+                        if not (now - (20 * 365 * 24 * 60 * 60) <= unix_time <= now):
                             raise ValueError(f"Invalid UNIX time at line {i+2}: {unix_time}")
                         
                         timestamp = self.tz_datestring(lat, lng, unix_time, self.args.round)
+                        tags.append(timestamp)
+                        self.attr_sets['dates'].add(timestamp)
 
                     if self.arg_parser.group_true('geographical'):
-                        country = item['country'] if 'country' in item else None
-                        state = item['state'] if 'state' in item else None
-                        locality = item['locality'] if 'locality' in item else None
+                        tags.extend(filter(None, [
+                            item.get('country') if self.args.country else None,
+                            item.get('state') if self.args.state else None,
+                            item.get('locality') if self.args.locality else None
+                        ]))
 
                     if self.args.drivingdirection:
-                        driving_direction = item['drivingDirection'] if 'drivingDirection' in item else None
+                        driving_direction = item.get('drivingDirection')
+                        if driving_direction:
+                            tags.append(Classifier.direction(driving_direction))
 
                     if self.args.solar or self.args.SOLAR:
                         try:
+                            altitude = round(float(item['altitude']))
+                            azimuth = round(float(item['azimuth']))
                             altitude_class = str(item['altitude_class'])
                             azimuth_class = str(item['azimuth_class'])
-                            sun_event = str(item['sun_event'])
+                            sun_event = item['sun_event']
 
-                            altitude = str(round(float(item['altitude'])))
-                            azimuth = str(round(float(item['azimuth'])))
-                        except:
+                            if self.args.solar:
+                                tags.extend([f"#{altitude_class}", f"@{azimuth_class}"])
+                                if sun_event:
+                                    tags.append(sun_event)
+                            if self.args.SOLAR:
+                                altitude_str, azimuth_str = f"{altitude} #", f"{azimuth} @"
+                                tags.extend([altitude_str, azimuth_str])
+                                self.attr_sets['altitudes'].add(altitude_str)
+                                self.attr_sets['azimuths'].add(azimuth_str)
+
+                            if self.args.heading == 'solar':
+                                item.update({'heading': float(azimuth), 'pitch': float(altitude)})
+                        except KeyError:
                             if self.arg_parser.cached:
                                 raise SVMap.CacheError()
                             else:
                                 raise ValueError("Solar data not found")
+
                     if self.args.clouds or self.args.CLOUDS:
-                        cloud_cover_class = str(item['cloudCoverClass']) if 'cloudCoverClass' in item else None
-                        cloud_cover = str(item['cloudCover']) if 'cloudCover' in item else None
-                    if self.args.precipitation:
-                        precipitation = str(item['precipitation']) if 'precipitation' in item and item['precipitation'] and item['precipitation'] > 0 else None
-                    if self.args.snow:
-                        snow_cover = str(item['snowCover']) if 'snowCover' in item and item['snowCover'] and item['snowCover'] > 0 else None
-                    if self.args.elevation:
-                        elevation = str(round(float(item['elevation']))) if 'elevation' in item and item['elevation'] else None
+                        cloud_cover = item.get('cloud_cover')
+                        if self.args.clouds and 'cloud_cover_class' in item:
+                            tags.append(str(item['cloud_cover_class']))
+                        if self.args.CLOUDS and cloud_cover:
+                            cloud_tag = f"CLOUD {cloud_cover}"
+                            tags.append(cloud_tag)
+                            self.attr_sets['cloud_cover'].add(cloud_tag)
 
+                    if self.args.precipitation and 'precipitation' in item:
+                        precipitation = item['precipitation']
+                        if precipitation and precipitation > 0:
+                            tags.append(f"PRCP {precipitation}")
 
-                    # Tagging
-                    tags = []
-                    if self.arg_parser.group_true('temporal'):
-                        tags.append(timestamp)
-                        self.attr_sets['dates'].add(timestamp)
-                    if self.arg_parser.group_true('geographical'):
-                        if self.args.country:
-                            tags.append(country)
-                        if self.args.state:
-                            tags.append(state)
-                        if self.args.locality:
-                            tags.append(locality)
-                    if self.args.drivingdirection:
-                        tags.append(Classifier.direction(driving_direction))
-                    if self.args.solar:
-                        tags.extend(["#"+str(altitude_class), "@"+str(azimuth_class), sun_event])
-                    if self.args.SOLAR:
-                        tags.extend([str(altitude)+" #", str(azimuth)+" @"])
-                        self.attr_sets['altitudes'].add(altitude+" #")
-                        self.attr_sets['azimuths'].add(azimuth +" @")
-                    if self.args.clouds:
-                        if cloud_cover_class:
-                            tags.append(cloud_cover_class)
-                    if self.args.CLOUDS:
-                        if cloud_cover:
-                            tags.append(cloud_cover)
-                            self.attr_sets['cloud_cover'].add(cloud_cover)
-                    if self.args.precipitation:
-                        if precipitation:
-                            tags.append("PRCP "+precipitation)
-                    if self.args.snow:
-                        if snow_cover:
-                            tags.append("SNOW "+snow_cover)
-                    if self.args.elevation:
+                    if self.args.snow and 'snowCover' in item:
+                        snow_cover = item['snowCover']
+                        if snow_cover and snow_cover > 0:
+                            tags.append(f"SNOW {snow_cover}")
+
+                    if self.args.elevation and 'elevation' in item:
+                        elevation = item['elevation']
                         if elevation:
-                            tags.append("ELEV "+elevation)
-                            self.attr_sets['elevation'].add("ELEV "+elevation)
+                            elevation_str = f"ELEV {round(float(elevation))}"
+                            tags.append(elevation_str)
+                            self.attr_sets['elevation'].add(elevation_str)
 
-                    # Prune empty tags
-                    tags = [tag for tag in tags if tag]
-
-                    # Append to data
-                    if "extra" in item and "tags" in item["extra"]:
-                        # Edge case if tag(s) are non-array
-                        if not isinstance(item['extra']['tags'], list):
-                            item['extra']['tags'] = [item['extra']['tags']]
-                        
-                        item["extra"]["tags"].extend(tags)
-                    else:
-                        item["extra"] = {"tags": tags}
-
-                    if (self.args.SOLAR or self.args.solar) and self.args.heading=='solar':
-                        item.update({
-                            "heading": float(azimuth),
-                            "pitch": float(altitude)
-                        })
+                    if tags:
+                        if "extra" in item:
+                            if "tags" in item["extra"]:
+                                if not isinstance(item['extra']['tags'], list):
+                                    item['extra']['tags'] = [item['extra']['tags']]
+                                item["extra"]["tags"].extend(tags)
+                            else:
+                                item["extra"]["tags"] = tags
+                        else:
+                            item["extra"] = {"tags": tags}
 
                 except SVMap.CacheError as e:
-                    print(e)
+                    logging.error(e)
                     exit(1)
                 except Exception as e:
-                    print(e)
+                    logging.error(e)
+
+            self.map.purge()
+            if not CONFIG['mapMakingAppStyles']:
+                return
 
             if self.arg_parser.group_true('temporal'):
                 sorted_dates = self.order_tags(self.attr_sets['dates'])
@@ -623,7 +620,7 @@ class MetaFetchParser:
                                 print(f"Request failed for chunk {chunk_num + 1} with status code: {response.status}")
                                 return None
             except Exception as e:
-                print(f"Error processing chunk {chunk_num + 1}: {str(e)}")
+                logging.error(f"Error processing chunk {chunk_num + 1}: {str(e)}")
                 return None
 
         chunks = []
@@ -742,7 +739,7 @@ if __name__ == '__main__':
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.timestamp))
             except Exception as e:
-                print("Temporal data retrieval error: ",e)
+                logging.error("Temporal data retrieval error: ",e)
                 exit(1)
         
         if argparser.args.solar or argparser.args.SOLAR:
@@ -750,7 +747,7 @@ if __name__ == '__main__':
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.solar))
             except Exception as e:
-                print("Solar data retrieval error: ",e)
+                logging.error("Solar data retrieval error: ",e)
                 exit(1)
         
         if argparser.args.clouds or argparser.args.CLOUDS or argparser.args.precipitation or argparser.args.snow:
@@ -758,7 +755,7 @@ if __name__ == '__main__':
             try:
                 asyncio.run(mfparser.weather())
             except Exception as e:
-                print("Weather data retrieval error: ",e)
+                logging.error("Weather data retrieval error: ",e)
                 exit(1)
 
         map_obj.save(Path(f"{FOLDERS['meta']['path']}/{FOLDERS['base']['files'].stem}.json").absolute()) # Save to meta folder
@@ -780,15 +777,15 @@ if __name__ == '__main__':
                 # os.remove(FOLDERS['meta']['files'])
                 print("Deleted " + str(FOLDERS['meta']['files']))
             except FileNotFoundError as e:
-                print("Failed to delete: " + str(e))
+                logging.error("Failed to delete: " + str(e))
 
         if argparser.args.cascade or argparser.args.tagged:
-            for FILE in FOLDERS['tagged']['files']:
+            for file in FOLDERS['tagged']['files']:
                 try:
                     # os.remove(file)
-                    print("Deleted " + str(FILE))
+                    print("Deleted " + str(file))
                 except FileNotFoundError as e:
-                    print("Failed to delete: " + str(e))
+                    logging.error("Failed to delete: " + str(e))
 
         if argparser.args.cascade or argparser.args.base:
             try:
@@ -798,5 +795,24 @@ if __name__ == '__main__':
                 # os.remove(FOLDERS['base']['files'])
                 print("Deleted " + str(FOLDERS['base']['files']))
             except FileNotFoundError as e:
-                print("Failed to delete: " + str(e))
+                logging.error("Failed to delete: " + str(e))
+    elif argparser.args.command == 'clear':
+        clear_map = SVMap(argparser.args.file)
+        removed = 0
+
+        for loc in clear_map.locs:
+            if 'extra' in loc:
+                if 'tags' in loc['extra'] and loc['extra']['tags']:
+                    removed += len(loc['extra']['tags'])
+                loc['extra']['tags'] = []
+            else:
+                loc['extra'] = {"tags": []}
+        if(argparser.filepath.parent.absolute() == FOLDERS['base']['path']):
+            conf = input("Are you sure you want to clear the base file? (y/n) ")
+            if conf == 'y':
+                print(str(removed) + " tags removed")
+                clear_map.save(argparser.filepath.absolute())
+            else:
+                exit(0)
+
     logging.info("Finished process")
