@@ -69,7 +69,7 @@ If you are running `metatag.py`, this is the list of arguments that are presentl
 ## Clearing tags: `clear <file>`
 
 # Integrations
-Tagged files are designed for elements you want visible, in whatever application is using it. [map-making.app](map-making.app) is an example of an existing Street View map viewer that is quite effective, though it becomes hard to handle at more than a thousand tags. MetaTag includes metadata associated with map-making.app, like tag ordering and colors. These are enabled by default, but once again can be changed in configuration.
+Tagged files are designed for elements you want visible, in whatever application is using it. [map-making.app](https://map-making.app) is an example of an existing Street View map viewer that is quite effective, though it becomes hard to handle at more than a thousand tags. MetaTag includes metadata associated with map-making.app, like tag ordering and colors. These are enabled by default, but once again can be changed in configuration.
 
 # Limitations
 **Cloud cover, precipitation and snow depth are not precise**. These attributes are fetched at hourly intervals and rounded lat/lng with historic data from Open-Meteo. This data is fantastic and wide-ranging, but low resolution; do not expect precise results. Also, file size is a concern that is not addressed at the moment. There is often duplicate data in several places with the current setup, with the intention to isolate your data; the original file is never touched. Likewise, with plain text, file size is hardly a concern, so duplication of data shouldn't be either. However, it would be ideal to remove the need for a `tagged` folder at all.
