@@ -1,16 +1,15 @@
 # IO
 from pathlib import Path
-import csv, json
+import json
 import argparse
-import os
+from os import path as os_path, remove as os_remove
 import re
 
 # Implicit processing
-import datetime
-from datetime import datetime as dt
-import time
+from datetime import datetime as dt, timedelta
+from time import time, localtime
 from timezonefinder import TimezoneFinder
-import pytz
+from pytz import utc, timezone
 import calendar
 from pysolar.solar import get_altitude, get_azimuth
 
@@ -50,7 +49,7 @@ if DEBUG:
 
 
 for folder in FOLDERS.values():
-    if not os.path.exists(folder['path']):
+    if not os_path.exists(folder['path']):
         raise FileNotFoundError(f"Path {folder['path']} does not exist")
 
 
@@ -154,7 +153,7 @@ class MetaTag:
         self.args = arg_parser.args
         self.map = map_obj
 
-        self.start_time = time.time()
+        self.start_time = time()
         self.attr_sets = {
             'dates': set(),
             'altitudes': set(),
@@ -320,16 +319,16 @@ class MetaTag:
         """
         timezone_str = self.tf.timezone_at(lng=lng, lat=lat) if self.args.time else None
         if timezone_str:
-            q = dt.fromtimestamp(unix_time, pytz.timezone(timezone_str))
+            q = dt.fromtimestamp(unix_time, timezone(timezone_str))
             if roundt:
-                discard = datetime.timedelta(minutes=q.minute % roundt,
+                discard = timedelta(minutes=q.minute % roundt,
                              seconds=q.second,
                              microseconds=q.microsecond)
                 q -= discard
-                if discard >= datetime.timedelta(minutes=roundt/2):
-                    q += datetime.timedelta(minutes=roundt)
+                if discard >= timedelta(minutes=roundt/2):
+                    q += timedelta(minutes=roundt)
         else:
-            lt = time.localtime(unix_time)
+            lt = localtime(unix_time)
             q = dt(lt.tm_year, lt.tm_mon, lt.tm_mday, lt.tm_hour, lt.tm_min, lt.tm_sec)
 
         return q.strftime(self.datestring if self.datestring else '%Y-%m-%d %H:%M')
@@ -410,7 +409,7 @@ class MetaFetchParser:
             elif loc.get('extra').get('panoDate'):
                 month = loc['extra']['panoDate']
             elif loc.get('timestamp'):
-                month = dt.fromtimestamp(loc['timestamp'], pytz.utc).strftime('%Y-%m')
+                month = dt.fromtimestamp(loc['timestamp'], utc).strftime('%Y-%m')
             elif self.args.load and loc.get('extra').get('tags'):
                 tags = loc['extra']['tags']
                 months = [month.lower() for month in calendar.month_name[1:]] + [month.lower() for month in calendar.month_abbr[1:]]
@@ -557,7 +556,7 @@ class MetaFetchParser:
             raise ValueError("Timestamp not found")
         
         timestamp = loc['timestamp']
-        timestamp_date = dt.fromtimestamp(timestamp, pytz.utc)
+        timestamp_date = dt.fromtimestamp(timestamp, utc)
         try:
             if not loc.get('altitude') or not loc.get('azimuth'):
                 altitude = get_altitude(lat, lng, timestamp_date)
@@ -707,7 +706,7 @@ class MetaFetchParser:
 
 
 
-if __name__ == '__main__':
+def main():
     logging.info("Starting process")
     # ArgParser
     argparser = ArgParser()
@@ -778,7 +777,7 @@ if __name__ == '__main__':
         meta = MetaTag(map_obj, argparser)
         map_obj.save(Path(f"{FOLDERS['tagged']['path']}/{FOLDERS['base']['files'].stem}-{arg_string}.json"))
 
-        end_time = time.time()
+        end_time = time()
         runtime = end_time - meta.start_time
 
         logging.debug(f"Tagging runtime: {round(runtime,5)} seconds")
@@ -788,7 +787,7 @@ if __name__ == '__main__':
                 if not FOLDERS['meta']['exists']:
                     raise FileNotFoundError(f"Meta file {FOLDERS['meta']['files']} does not exist")
                 
-                # os.remove(FOLDERS['meta']['files'])
+                # os_remove(FOLDERS['meta']['files'])
                 print("Deleted " + str(FOLDERS['meta']['files']))
             except FileNotFoundError as e:
                 logging.error("Failed to delete: " + str(e))
@@ -796,7 +795,7 @@ if __name__ == '__main__':
         if argparser.args.cascade or argparser.args.tagged:
             for file in FOLDERS['tagged']['files']:
                 try:
-                    # os.remove(file)
+                    # os_remove(file)
                     print("Deleted " + str(file))
                 except FileNotFoundError as e:
                     logging.error("Failed to delete: " + str(e))
@@ -806,7 +805,7 @@ if __name__ == '__main__':
                 if not FOLDERS['base']['exists']:
                     raise FileNotFoundError(f"Base file {FOLDERS['base']['files']} does not exist")
                 
-                # os.remove(FOLDERS['base']['files'])
+                # os_remove(FOLDERS['base']['files'])
                 print("Deleted " + str(FOLDERS['base']['files']))
             except FileNotFoundError as e:
                 logging.error("Failed to delete: " + str(e))
@@ -828,3 +827,6 @@ if __name__ == '__main__':
                 exit(0)
 
     logging.info("Finished process")
+
+if __name__ == '__main__':
+    main()
