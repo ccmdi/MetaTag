@@ -3,7 +3,10 @@ from pathlib import Path
 import json
 import argparse
 from os import path as os_path, remove as os_remove
+import sys
 import re
+import readline
+import glob
 
 # Implicit processing
 from datetime import datetime as dt, timedelta
@@ -23,7 +26,14 @@ import logging
 from sv_map import SVMap, Classifier, verify_extra, force_extra, clear_tags
 from get_date import find_accurate_timestamp
 
-FILE = Path(__file__).parent
+
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    FILE = Path(sys.executable).parent
+    EXE = True
+else:
+    FILE = Path(__file__).parent
+    EXE = False
+
 CONFIG = json.load(open(FILE / 'config.json', 'r'))
 FOLDERS = {
     'base': {
@@ -829,4 +839,28 @@ def main():
     logging.info("Finished process")
 
 if __name__ == '__main__':
-    main()
+    if EXE and len(sys.argv) == 1:
+        while True:
+            user_input = input("\033[1;35mARGUMENTS: \033[0m")
+            args = []
+            current_arg = []
+            in_quotes = False
+
+            for char in user_input:
+                if char == '"':
+                    in_quotes = not in_quotes
+                elif char == ' ' and not in_quotes:
+                    if current_arg:
+                        args.append(''.join(current_arg))
+                        current_arg = []
+                else:
+                    current_arg.append(char)
+
+            if current_arg:
+                args.append(''.join(current_arg))
+
+            sys.argv = [sys.argv[0]] + args
+            main()
+            print()
+    else:
+        main()
