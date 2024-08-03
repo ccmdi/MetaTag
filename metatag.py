@@ -617,7 +617,6 @@ class MetaFetchParser:
                     async with rate_limiter:
                         async with session.get(request_url) as response:
                             request_count += 1
-                            progress.update(len(latstring.split(',')))
                             # print(f"Request {request_count} for chunk {chunk_num + 1}")
                             progress.update(len(latstring.split(',')))
                             if response.status == 200:
