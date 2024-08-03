@@ -5,5 +5,8 @@
         "tagged": "./maps/tagged"
     },
     "compressFile": false,
-    "debug": false
+    "keepUnknownFields": false,
+    "mapMakingAppStyles": true,
+    "debug": false,
+    "weatherSearchWindow": 0.1
 }
