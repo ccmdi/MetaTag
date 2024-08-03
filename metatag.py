@@ -203,7 +203,7 @@ class MetaTag:
                     if self.args.drivingdirection:
                         driving_direction = item.get('drivingDirection')
                         if driving_direction:
-                            tags.append(Classifier.direction(driving_direction))
+                            tags.append("DRIVING " + Classifier.direction(driving_direction))
 
                     if self.args.solar or self.args.SOLAR:
                         try:
@@ -531,7 +531,6 @@ class MetaFetchParser:
                             loc['panoId'] = None
 
                         if self.args.heading == "drivingdirection":
-                            #print(loads[1][5][0][3][0][4][2][2][0])
                             try:
                                 if loc['drivingDirection']:
                                     loc['heading'] = loc['drivingDirection']
@@ -587,13 +586,17 @@ class MetaFetchParser:
             'precipitation': ['precipitation', 'precipitation'],
             'snow': ['snow_depth', 'snowDepth']
         }
-        requested_params = [param for param in endpoints if getattr(self.arg_parser.args, param, False)]
+        requested_params = [
+            param.lower() 
+            for param in endpoints 
+            if getattr(self.arg_parser.args, param.lower(), False) or getattr(self.arg_parser.args, param.upper(), False)
+        ]
         METEO_ARGSTRING = ",".join([endpoints[param][0] for param in requested_params])
 
         total_locations = len(self.map.locs)
         progress = tqdm(total=total_locations, desc=self.PROCESS_NAMES[self.weather])
 
-        if self.arg_parser.cached and (all(endpoints[param][1] in self.map.locs[0] for param in requested_params) or (self.arg_parser.args.clouds and 'cloudCoverClass' in self.map.locs[0])):
+        if self.arg_parser.cached and (all(endpoints[param][1] in self.map.locs[0] for param in requested_params) or (self.arg_parser.args.CLOUDS and 'cloudCoverClass' in self.map.locs[0])):
             progress.update(total_locations)
             return
 
@@ -601,6 +604,7 @@ class MetaFetchParser:
         loc_pool = []
         request_count = 0
         METEO_MAX_RATE = (600/chunk_size) # You can also self-host the API https://github.com/open-meteo/open-meteo/blob/main/docs/getting-started.md
+        WEATHER_SEARCH_WINDOW = CONFIG['weatherSearchWindow']
 
         rate_limiter = AsyncLimiter(max_rate=METEO_MAX_RATE, time_period=60)
 
@@ -615,6 +619,7 @@ class MetaFetchParser:
                             request_count += 1
                             progress.update(len(latstring.split(',')))
                             # print(f"Request {request_count} for chunk {chunk_num + 1}")
+                            progress.update(len(latstring.split(',')))
                             if response.status == 200:
                                 response_data = await response.json()
                                 return response_data
@@ -629,6 +634,7 @@ class MetaFetchParser:
         chunks = []
         latstring, lngstring, datestring = "", "", ""
         
+        # Generate chunks (pre-process)
         for i, loc in enumerate(self.map.locs):
             lat, lng = loc['lat'], loc['lng']
             timestamp = loc['timestamp']
@@ -643,6 +649,7 @@ class MetaFetchParser:
                 chunks.append((latstring[:-1], lngstring[:-1], datestring[:-1]))
                 latstring, lngstring, datestring = "", "", ""
 
+        # Gather chunks (process)
         async def process_chunks():
             tasks = [asyncio.create_task(process_chunk(lat, lng, date, i, progress)) 
                     for i, (lat, lng, date) in enumerate(chunks)]
@@ -651,12 +658,13 @@ class MetaFetchParser:
         chunk_results = await process_chunks()
         progress.close()
 
+        # Matching (post-process)
         for chunk_data in chunk_results:
             for loc in chunk_data:
                 if loc and 'hourly' in loc:
                     times = loc['hourly']['time']
                     for time in times:
-                        weather_mapping = {'time': time}
+                        weather_mapping = {'time': time, 'longitude': loc['longitude'], 'latitude': loc['latitude']}
                         
                         if 'cloud_cover' in loc['hourly']:
                             weather_mapping['cloud_cover'] = loc['hourly']['cloud_cover'][times.index(time)]
@@ -672,20 +680,30 @@ class MetaFetchParser:
         for i, loc in enumerate(self.map.locs):
             min_time = loc['timestamp'] - 1800
             max_time = loc['timestamp'] + 1800
-            filtered_data = [data for data in loc_pool if min_time <= data['time'] <= max_time]
+            min_lng = loc['lng'] - WEATHER_SEARCH_WINDOW
+            max_lng = loc['lng'] + WEATHER_SEARCH_WINDOW
+            min_lat = loc['lat'] - WEATHER_SEARCH_WINDOW
+            max_lat = loc['lat'] + WEATHER_SEARCH_WINDOW
+            
+            filtered_data = [
+                data for data in loc_pool 
+                if min_time <= data['time'] <= max_time and min_lat <= data['latitude'] <= max_lat and min_lng <= data['longitude'] <= max_lng
+            ]
             
             if filtered_data:
                 closest_data = min(filtered_data, key=lambda data: abs(data['time'] - loc['timestamp']))
                 # print(f"Closest data for location {i + 1}: {closest_data}")
-
-                if closest_data and 'cloud_cover' in closest_data:
+                
+                if 'cloud_cover' in closest_data:
                     cloud_cover = closest_data['cloud_cover']
                     loc['cloudCoverClass'] = str(Classifier.cloud_cover_event(cloud_cover))
                     loc['cloudCover'] = cloud_cover
-                if closest_data and 'precipitation' in closest_data:
+                if 'precipitation' in closest_data:
                     loc['precipitation'] = closest_data['precipitation']
-                if closest_data and 'snow_depth' in closest_data:
+                if 'snow_depth' in closest_data:
                     loc['snowDepth'] = closest_data['snow_depth']
+            else:
+                logging.error(f"No weather data found within the time range for location {i + 1}")
 
 
     async def bulk_parse(self, func):

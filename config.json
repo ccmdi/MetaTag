@@ -7,5 +7,6 @@
     "compressFile": false,
     "keepUnknownFields": false,
     "mapMakingAppStyles": true,
-    "debug": false
+    "debug": false,
+    "weatherSearchWindow": 0.1
 }
