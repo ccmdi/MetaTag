@@ -73,6 +73,12 @@ If you are running `metatag.py`, this is the list of arguments that are presentl
 
 ## Clearing tags: `clear <file>`
 
+## Attribute tables: `extract <file> --key <key> --attr <attribute list> <args>`
+* `--format [percent/count]` Format of output -- defaults to 'count'
+* `--classify [direction, altitude, cloud_cover_event, none]` Post-processing classifier for attribute (can use 'none' in the case of multiple attributes)
+* `--include-none` Include 'none' values for attribute as seperate column
+
+
 # Integrations
 Tagged files are designed for elements you want visible, in whatever application is using it. [map-making.app](https://map-making.app) is an example of an existing Street View map viewer that is quite effective, though it becomes hard to handle at more than a thousand tags. MetaTag includes metadata associated with map-making.app, like tag ordering and colors. These are enabled by default, but once again can be changed in configuration.
 

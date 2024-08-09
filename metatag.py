@@ -18,7 +18,6 @@ import asyncio, aiohttp
 from aiolimiter import AsyncLimiter
 from tqdm import tqdm
 import logging
-from itertools import product
 from collections import defaultdict
 
 # Local
@@ -87,17 +86,10 @@ class ArgParser:
         self.userparser =  self.subparsers.choices[self.args.command]
         self.filepath = Path(self.args.file)
 
-        if self.args.command == 'tag':
+        # Cache
+        if self.args.command == 'tag' or self.args.command == 'extract':
             self.cached_file = (FOLDERS['meta']['path'] / self.filepath.name).absolute()
-            if self.cached_file.exists() and not self.args.no_cache_in:
-                print("Found cached file")
-                self.cached = True
-            else:
-                self.cached = False
-        
-        if self.args.command == 'extract':
-            self.cached_file = (FOLDERS['meta']['path'] / self.filepath.name).absolute()
-            if self.cached_file.exists():
+            if self.cached_file.exists() and ((hasattr(self.args, 'no_cache_in',) and not self.args.no_cache_in) or not hasattr(self.args, 'no_cache_in')):
                 print("Found cached file")
                 self.cached = True
             else:
@@ -153,8 +145,7 @@ class ArgParser:
         self.add_argument(parser, 'file', type=str, help='Path to JSON file to extract from')
         self.add_argument(parser, '--key', type=str, required=True, help='Key for rows')
         self.add_argument(parser, '--attr', type=str, nargs='+', required=True, help='Keys to extract from JSON for columns')
-        self.add_argument(parser, '--format', choices=['percent', 'count'], default='count',
-                            help='Format of the output (percent or count)')
+        self.add_argument(parser, '--format', choices=['percent', 'count'], default='count', help='Format of the output (percent or count)')
         self.add_argument(parser, '--classify', nargs='*', help='Post-processing classifier types (one per attribute, use "none" to skip)')
         self.add_argument(parser, '--include-none', action='store_true', help='Include None values as a separate category')
 
@@ -888,34 +879,43 @@ def main():
             if not key_value:
                 continue
 
+            attr_values = []
             for attr, classifier in zip(argparser.args.attr, classifiers):
                 attr_value = coord.get(attr)
                 if attr_value is None:
                     if argparser.args.include_none:
                         attr_value = "None"
                     else:
-                        continue
+                        break
                 elif classifier.lower() != 'none':
                     attr_value = getattr(Classifier, classifier)(attr_value)
-                
-                results[key_value][attr_value] += 1
+                attr_values.append(str(attr_value))
+            
+            if len(attr_values) == len(argparser.args.attr):
+                combined_attr = " - ".join(attr_values)
+                results[key_value][combined_attr] += 1
                 total_counts[key_value] += 1
 
         output_filename = f"{FOLDERS['views']['path'] / Path(argparser.args.file).stem} - {argparser.args.key.upper()} to {'+'.join(argparser.args.attr).upper()}.csv"
         with open(output_filename, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
 
-            all_attr_values = set()
+            all_attr_combinations = set()
             for attr_counts in results.values():
-                all_attr_values.update(attr_counts.keys())
+                all_attr_combinations.update(attr_counts.keys())
 
-            header = [argparser.args.key] + sorted(all_attr_values) + ['TOTAL']
+            sorted_attr_combinations = sorted(
+                all_attr_combinations,
+                key=lambda x: (x.count("None"), x)
+            )
+
+            header = [argparser.args.key] + sorted_attr_combinations + ['TOTAL']
             writer.writerow(header)
             
             for key_value, attr_counts in results.items():
                 row = [key_value]
-                for attr_value in sorted(all_attr_values):
-                    count = attr_counts[attr_value]
+                for attr_combination in sorted_attr_combinations:
+                    count = attr_counts[attr_combination]
                     if argparser.args.format == 'count':
                         row.append(count)
                     else:  # percent
