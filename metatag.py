@@ -18,6 +18,7 @@ import asyncio, aiohttp
 from aiolimiter import AsyncLimiter
 from tqdm import tqdm
 import logging
+from itertools import product
 from collections import defaultdict
 
 # Local
@@ -151,12 +152,11 @@ class ArgParser:
     def add_extract_arguments(self, parser):
         self.add_argument(parser, 'file', type=str, help='Path to JSON file to extract from')
         self.add_argument(parser, '--key', type=str, required=True, help='Key for rows')
-        self.add_argument(parser, '--attr', type=str, required=True, help='Key to extract from JSON for columns')
+        self.add_argument(parser, '--attr', type=str, nargs='+', required=True, help='Keys to extract from JSON for columns')
         self.add_argument(parser, '--format', choices=['percent', 'count'], default='count',
                             help='Format of the output (percent or count)')
-        self.add_argument(parser, '--classify', choices=['direction', 'altitude', 'cloud_cover_event'], 
-                            help='Post-processing classifier type')
-        self.add_argument(parser, '--count', action='store_true', help='Additional column for count')
+        self.add_argument(parser, '--classify', nargs='*', help='Post-processing classifier types (one per attribute, use "none" to skip)')
+        self.add_argument(parser, '--include-none', action='store_true', help='Include None values as a separate category')
 
     def add_argument(self, parser, *args, **kwargs):
         group = kwargs.pop('group', None)
@@ -878,25 +878,38 @@ def main():
 
         results = defaultdict(lambda: defaultdict(int))
         total_counts = defaultdict(int)
-        all_attr_values = set()
+
+        classifiers = argparser.args.classify or ['none'] * len(argparser.args.attr)
+        if len(classifiers) != len(argparser.args.attr):
+            raise ValueError("Number of classifiers must match number of attributes")
 
         for coord in map_obj.locs:
             key_value = coord.get(argparser.args.key)
-            attr_value = coord.get(argparser.args.attr)
+            if not key_value:
+                continue
 
-            if argparser.args.classify:
-                attr_value =  getattr(Classifier, argparser.args.classify)(attr_value)
-
-            if key_value and attr_value:
+            for attr, classifier in zip(argparser.args.attr, classifiers):
+                attr_value = coord.get(attr)
+                if attr_value is None:
+                    if argparser.args.include_none:
+                        attr_value = "None"
+                    else:
+                        continue
+                elif classifier.lower() != 'none':
+                    attr_value = getattr(Classifier, classifier)(attr_value)
+                
                 results[key_value][attr_value] += 1
                 total_counts[key_value] += 1
-                all_attr_values.add(attr_value)
 
-        output_filename = f"{FOLDERS['views']['path'] / Path(argparser.args.file).stem} - {argparser.args.key.upper()} to {argparser.args.attr.upper()}.csv"
+        output_filename = f"{FOLDERS['views']['path'] / Path(argparser.args.file).stem} - {argparser.args.key.upper()} to {'+'.join(argparser.args.attr).upper()}.csv"
         with open(output_filename, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
 
-            header = [argparser.args.key] + sorted(all_attr_values) + (['COUNT'] if argparser.args.count else [])
+            all_attr_values = set()
+            for attr_counts in results.values():
+                all_attr_values.update(attr_counts.keys())
+
+            header = [argparser.args.key] + sorted(all_attr_values) + ['TOTAL']
             writer.writerow(header)
             
             for key_value, attr_counts in results.items():
@@ -908,7 +921,7 @@ def main():
                     else:  # percent
                         percentage = (count / total_counts[key_value]) * 100 if total_counts[key_value] else 0
                         row.append(f"{percentage:.2f}%")
-                row.append(total_counts[key_value]) if argparser.args.count else None
+                row.append(total_counts[key_value])
                 writer.writerow(row)
 
         print(f"Results written to {output_filename}")
