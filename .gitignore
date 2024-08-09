@@ -31,9 +31,11 @@ maps/base/*
 maps/csv/
 maps/meta/*
 maps/tagged/*
+views/*
 !maps/base/Tunisia Car.json
 !maps/meta/Tunisia Car.json
 !maps/tagged/Tunisia Car-d.json
+!views/Tunisia Car - STATE to DRIVINGDIRECTION.csv
 csv/*
 clouds/*
 2020 pop 1km.tif

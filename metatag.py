@@ -1,6 +1,6 @@
 # IO
 from pathlib import Path
-import json
+import csv, json
 import argparse
 from os import path as os_path, remove as os_remove
 import re
@@ -18,6 +18,7 @@ import asyncio, aiohttp
 from aiolimiter import AsyncLimiter
 from tqdm import tqdm
 import logging
+from collections import defaultdict
 
 # Local
 from sv_map import SVMap, Classifier, verify_extra, force_extra, clear_tags
@@ -38,6 +39,11 @@ FOLDERS = {
     },
     'tagged': {
         'path': (FILE / CONFIG['path']['tagged']).resolve(),
+        'files': None,
+        'exists': False
+    },
+    'views': {
+        'path': (FILE / CONFIG['path']['views']).resolve(),
         'files': None,
         'exists': False
     }
@@ -73,6 +79,9 @@ class ArgParser:
         self.clear_parser = self.subparsers.add_parser('clear', help='Clear tags for meta file')
         self.add_clear_arguments(self.clear_parser)
         
+        self.extract_parser = self.subparsers.add_parser('extract', help='Extract attributes as table')
+        self.add_extract_arguments(self.extract_parser)
+
         self.args = self.parser.parse_args()
         self.userparser =  self.subparsers.choices[self.args.command]
         self.filepath = Path(self.args.file)
@@ -80,6 +89,14 @@ class ArgParser:
         if self.args.command == 'tag':
             self.cached_file = (FOLDERS['meta']['path'] / self.filepath.name).absolute()
             if self.cached_file.exists() and not self.args.no_cache_in:
+                print("Found cached file")
+                self.cached = True
+            else:
+                self.cached = False
+        
+        if self.args.command == 'extract':
+            self.cached_file = (FOLDERS['meta']['path'] / self.filepath.name).absolute()
+            if self.cached_file.exists():
                 print("Found cached file")
                 self.cached = True
             else:
@@ -119,7 +136,7 @@ class ArgParser:
         self.add_argument(parser, '-w', '--snow', action='store_true', group='terrestrial')
         self.add_argument(parser, '-e', '--elevation', action='store_true', group='terrestrial')
         self.add_argument(parser, '--heading', type=str, default=None, help='Update heading; orient towards object i.e. solar', group='terrestrial')
-        self.add_argument(parser, '-drivingdirection', action='store_true', help='Update driving direction', group='terrestrial')
+        self.add_argument(parser, '--drivingdirection', action='store_true', help='Update driving direction', group='terrestrial')
 
     def add_delete_arguments(self, parser):
         self.add_argument(parser, 'file', type=str, help='Path to file to delete')
@@ -130,6 +147,16 @@ class ArgParser:
     
     def add_clear_arguments(self, parser):
         self.add_argument(parser, 'file', type=str, help='Path to file to clear')
+
+    def add_extract_arguments(self, parser):
+        self.add_argument(parser, 'file', type=str, help='Path to JSON file to extract from')
+        self.add_argument(parser, '--key', type=str, required=True, help='Key for rows')
+        self.add_argument(parser, '--attr', type=str, required=True, help='Key to extract from JSON for columns')
+        self.add_argument(parser, '--format', choices=['percent', 'count'], default='count',
+                            help='Format of the output (percent or count)')
+        self.add_argument(parser, '--classify', choices=['direction', 'altitude', 'cloud_cover_event'], 
+                            help='Post-processing classifier type')
+        self.add_argument(parser, '--count', action='store_true', help='Additional column for count')
 
     def add_argument(self, parser, *args, **kwargs):
         group = kwargs.pop('group', None)
@@ -731,11 +758,12 @@ def main():
     FOLDERS['base']['files'] = argparser.filepath.absolute()
     FOLDERS['meta']['files'] = Path(f"{FOLDERS['meta']['path']}\{argparser.filepath.stem}.json")
     FOLDERS['tagged']['files'] = list(Path(FOLDERS['tagged']['path']).glob(f"{argparser.filepath.stem}-*.json"))
+    FOLDERS['views']['files'] = list(Path(FOLDERS['views']['path']).glob(f"{argparser.filepath.stem}-*.csv"))
 
     FOLDERS['base']['exists'] =  argparser.filepath.exists()
     FOLDERS['meta']['exists'] = FOLDERS['meta']['files'].exists()
     FOLDERS['tagged']['exists'] = len(FOLDERS['tagged']['files']) > 0
-
+    FOLDERS['views']['exists'] = len(FOLDERS['views']['files']) > 0
 
     if argparser.args.command == 'tag':
         if not any(getattr(argparser.args, k) for k in argparser.SHORT_ARGS) and not argparser.group_true('geographical'):
@@ -827,11 +855,11 @@ def main():
             except FileNotFoundError as e:
                 logging.error("Failed to delete: " + str(e))
     elif argparser.args.command == 'clear':
-        clear_map = SVMap(argparser.args.file)
+        map_obj = SVMap(argparser.args.file)
         removed = 0
-        total = len(clear_map.locs)
+        total = len(map_obj.locs)
 
-        for loc in clear_map.locs:
+        for loc in map_obj.locs:
             if verify_extra(loc, tags=True):
                 removed += len(loc['extra']['tags'])
                 loc = clear_tags(loc)
@@ -839,9 +867,51 @@ def main():
             conf = input("Are you sure you want to clear the base file? (y/n) ")
             if conf == 'y':
                 print(str(removed) + " tags removed from " + str(total) + " locations")
-                clear_map.save(argparser.filepath.absolute())
+                map_obj.save(argparser.filepath.absolute())
             else:
                 exit(0)
+    elif argparser.args.command == 'extract':
+        if(argparser.cached):
+            map_obj = SVMap(argparser.cached_file)
+        else:
+            map_obj = SVMap(argparser.args.file)
+
+        results = defaultdict(lambda: defaultdict(int))
+        total_counts = defaultdict(int)
+        all_attr_values = set()
+
+        for coord in map_obj.locs:
+            key_value = coord.get(argparser.args.key)
+            attr_value = coord.get(argparser.args.attr)
+
+            if argparser.args.classify:
+                attr_value =  getattr(Classifier, argparser.args.classify)(attr_value)
+
+            if key_value and attr_value:
+                results[key_value][attr_value] += 1
+                total_counts[key_value] += 1
+                all_attr_values.add(attr_value)
+
+        output_filename = f"{FOLDERS['views']['path'] / Path(argparser.args.file).stem} - {argparser.args.key.upper()} to {argparser.args.attr.upper()}.csv"
+        with open(output_filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+
+            header = [argparser.args.key] + sorted(all_attr_values) + (['COUNT'] if argparser.args.count else [])
+            writer.writerow(header)
+            
+            for key_value, attr_counts in results.items():
+                row = [key_value]
+                for attr_value in sorted(all_attr_values):
+                    count = attr_counts[attr_value]
+                    if argparser.args.format == 'count':
+                        row.append(count)
+                    else:  # percent
+                        percentage = (count / total_counts[key_value]) * 100 if total_counts[key_value] else 0
+                        row.append(f"{percentage:.2f}%")
+                row.append(total_counts[key_value]) if argparser.args.count else None
+                writer.writerow(row)
+
+        print(f"Results written to {output_filename}")
 
     logging.info("Finished process")
 

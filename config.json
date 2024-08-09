@@ -2,7 +2,8 @@
     "path": {
         "base": "./maps/base",
         "meta": "./maps/meta",
-        "tagged": "./maps/tagged"
+        "tagged": "./maps/tagged",
+        "views": "./views"
     },
     "compressFile": false,
     "keepUnknownFields": false,
