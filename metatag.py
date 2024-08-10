@@ -89,7 +89,7 @@ class ArgParser:
         # Cache
         if self.args.command == 'tag' or self.args.command == 'extract':
             self.cached_file = (FOLDERS['meta']['path'] / self.filepath.name).absolute()
-            if self.filepath.parent.absolute() == FOLDERS['base']['path'] and self.cached_file.exists() and ((hasattr(self.args, 'no_cache_in',) and not self.args.no_cache_in) or not hasattr(self.args, 'no_cache_in')):
+            if str(FOLDERS['base']['path']) in str(self.filepath.absolute())  and self.cached_file.exists() and ((hasattr(self.args, 'no_cache_in',) and not self.args.no_cache_in) or not hasattr(self.args, 'no_cache_in')):
                 print("Found cached file")
                 self.cached = True
             else:
@@ -462,7 +462,8 @@ class MetaFetchParser:
 
         if (
             (('imageDate' in loc or 'timestamp' in loc) and (self.arg_parser.group_true('temporal') or self.arg_parser.group_true('terrestrial'))) or
-            ('country' in loc and self.args.country)
+            ('country' in loc and self.args.country) or
+            (self.args.drivingdirection and 'drivingDirection' in loc)
         ) and not self.args.no_cache_in:
             progress.update(1)
             return loc
@@ -555,23 +556,18 @@ class MetaFetchParser:
                     except IndexError:
                         loc['panoId'] = None
 
-                    if self.args.heading == "drivingdirection":
-                        try:
-                            if loc['drivingDirection']:
-                                loc['heading'] = loc['drivingDirection']
-                            else:
-                                raise IndexError
-                        except IndexError:
-                            loc['heading'] = 0
-                    elif ',' in self.args.heading:
-                        try:
-                            heading, pitch = map(int, self.args.heading.split(','))
-                            loc.update({
-                                'heading': heading % 360,
-                                'pitch': pitch % 90
-                            })
-                        except:
-                            raise ValueError("Invalid 'heading,pitch' tuple")
+                    if self.args.heading:
+                        if self.args.heading == "drivingdirection":
+                            loc['heading'] = loc.get('drivingDirection', 0)
+                        elif ',' in self.args.heading:
+                            try:
+                                heading, pitch = map(int, self.args.heading.split(','))
+                                loc.update({
+                                    'heading': heading % 360,
+                                    'pitch': pitch % 90
+                                })
+                            except:
+                                raise ValueError("Invalid 'heading,pitch' tuple")
 
             except Exception as e:
                 logging.error(e)
@@ -795,7 +791,7 @@ def main():
 
         # MetaFetch
         logging.info("Metadata fetch")
-        mfparser = MetaFetchParser(map_obj, argparser)
+        mfparser = MetaFetchParser(map_obj, argparser, CONFIG['panoFetchRadius'], CONFIG['panoFetchChunkSize'])
         asyncio.run(mfparser.bulk_parse(mfparser.fetch_meta))
 
         if argparser.group_true('temporal') or argparser.group_true('terrestrial') or argparser.args.heading == 'solar':

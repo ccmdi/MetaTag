@@ -9,5 +9,7 @@
     "keepUnknownFields": false,
     "mapMakingAppStyles": true,
     "debug": false,
-    "weatherSearchWindow": 0.1
+    "weatherSearchWindow": 0.1,
+    "panoFetchRadius": 30,
+    "panoFetchChunkSize": 15
 }
