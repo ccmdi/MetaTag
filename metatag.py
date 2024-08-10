@@ -18,6 +18,7 @@ import asyncio, aiohttp
 from aiolimiter import AsyncLimiter
 from tqdm import tqdm
 import logging
+import random
 from collections import defaultdict
 
 # Local
@@ -288,7 +289,7 @@ class MetaTag:
                     exit(1)
                 except Exception as e:
                     logging.error(e)
-
+            
             logging.info("Purge map")
             self.map.purge()
             if not CONFIG['mapMakingAppStyles']:
@@ -296,28 +297,17 @@ class MetaTag:
 
             self.map.verify_map_styles()
 
-            logging.info("Order tags - temporal")
-            if self.arg_parser.group_true('temporal'):
-                sorted_dates = self.order_tags(self.attr_sets['dates'])
-                self.offset += sorted_dates[2]
-                # print("Datetime span:", sorted_dates[0], "to", sorted_dates[1])
-
-            logging.info("Order tags - solar")
-            if self.args.SOLAR:
-                sorted_altitude = self.order_tags(self.attr_sets['altitudes'], sortby='parseint')
-                self.offset += sorted_altitude[2]
-                sorted_azimuth = self.order_tags(self.attr_sets['azimuths'], sortby='parseint')
-                self.offset += sorted_azimuth[2]
-            
-            logging.info("Order tags - clouds")
-            if self.args.CLOUDS:
-                sorted_cloud_cover = self.order_tags(self.attr_sets['cloudCover'], sortby='parseint')
-                self.offset += sorted_cloud_cover[2]
-            
-            logging.info("Order tags - elevation")
-            if self.args.elevation:
-                sorted_elevation = self.order_tags(self.attr_sets['elevation'], sortby='parseint')
-                self.offset += sorted_elevation[2]
+            for attr_name, attr_set in self.attr_sets.items():
+                if attr_set:
+                    logging.info(f"Order tags - {attr_name}")
+                    if attr_name == 'dates':
+                        sortby = 'date'
+                    elif attr_name == 'altitudes' or attr_name == 'azimuths' or attr_name == 'elevation' or attr_name == 'cloudCover':
+                        sortby = 'parseint'
+                    else:
+                        sortby = "lexicographic"
+                        
+                    self.order_tags(attr_set, sortby=sortby, tag_type=attr_name)
 
         except Exception as e:
             logging.error(f'Error: {e}')
@@ -372,14 +362,16 @@ class MetaTag:
         else:
             return None
 
+    def generate_random_color(self):
+        """Generate a random color based on the base color."""
+        return [int(comp * (0.5 + 0.5 * random.random())) for comp in self.color]
+
     def order_tags(self, attribute_set, sortby='date'):
         """
         Orders the tags based on the specified attribute set and sort order.
-
         Args:
             attribute_set (set): The set of attributes to be ordered.
             sortby (str): The sort order.
-
         Returns:
             list: A list containing the start value, end value, and offset.
         """
@@ -387,15 +379,26 @@ class MetaTag:
             sli = sorted(list(attribute_set), key=lambda i: dt.strptime(i, self.datestring) if self.datestring else i)
         elif sortby == 'parseint':
             sli = sorted(list(attribute_set), key=lambda i: int(re.search(r'-?\d+', i).group()) if int(re.search(r'-?\d+', i).group()) else i)
+        else:
+            sli = sorted(list(attribute_set))
         start = sli[0]
         end = sli[-1]
-        i = 0 if self.offset == 0 else 1
 
         for i, item in enumerate(sli):
-            self.map.data["extra"]["tags"][item] = {"order": i+self.offset}
+            if 'extra' not in self.map.data:
+                self.map.data['extra'] = {}
+            if 'tags' not in self.map.data['extra']:
+                self.map.data['extra']['tags'] = {}
+            if item not in self.map.data['extra']['tags']:
+                self.map.data['extra']['tags'][item] = {}
+            
+            self.map.data['extra']['tags'][item]['order'] = i + self.offset
+
             color_scale = [int(start + (end - start) * (i / len(sli))) for start, end in zip(self.color2, self.color)]
-            self.map.data["extra"]["tags"][item]['color'] = color_scale
-        return [start, end, i]
+            self.map.data['extra']['tags'][item]['color'] = color_scale
+
+        self.offset += len(sli)
+        return [start, end, len(sli)]
 
 class MetaFetchParser:
     def __init__(self, map_obj, args, radius=30, chunk_size=15):
@@ -461,9 +464,9 @@ class MetaFetchParser:
         lat, lng = loc['lat'], loc['lng']
 
         if (
-            (('imageDate' in loc or 'timestamp' in loc) and (self.arg_parser.group_true('temporal') or self.arg_parser.group_true('terrestrial'))) or
-            ('country' in loc and self.args.country) or
-            (self.args.drivingdirection and 'drivingDirection' in loc)
+            (('imageDate' in loc or 'timestamp' in loc) or not (self.arg_parser.group_true('temporal') or self.arg_parser.group_true('terrestrial'))) and
+            ('country' in loc or not self.args.country) and
+            (not self.args.drivingdirection or loc.get('drivingDirection') is not None)
         ) and not self.args.no_cache_in:
             progress.update(1)
             return loc
@@ -558,7 +561,7 @@ class MetaFetchParser:
 
                     if self.args.heading:
                         if self.args.heading == "drivingdirection":
-                            loc['heading'] = loc.get('drivingDirection', 0)
+                            loc['heading'] = loc.get('drivingDirection') or 0
                         elif ',' in self.args.heading:
                             try:
                                 heading, pitch = map(int, self.args.heading.split(','))
