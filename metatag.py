@@ -89,7 +89,7 @@ class ArgParser:
         # Cache
         if self.args.command == 'tag' or self.args.command == 'extract':
             self.cached_file = (FOLDERS['meta']['path'] / self.filepath.name).absolute()
-            if self.cached_file.exists() and ((hasattr(self.args, 'no_cache_in',) and not self.args.no_cache_in) or not hasattr(self.args, 'no_cache_in')):
+            if self.filepath.parent.absolute() == FOLDERS['base']['path'] and self.cached_file.exists() and ((hasattr(self.args, 'no_cache_in',) and not self.args.no_cache_in) or not hasattr(self.args, 'no_cache_in')):
                 print("Found cached file")
                 self.cached = True
             else:
@@ -108,8 +108,10 @@ class ArgParser:
         self.add_argument(parser, '-N', '--no-cache-out', action='store_true', help='No cache output', group='files')
         self.add_argument(parser, '-M', '--meta', action='store_true', help='Meta file only', group='files')
         self.add_argument(parser, '-o', '--overwrite', action='store_true', help='Overwrite tags', group='files')
+
         self.add_argument(parser, '--color', type=str, help='Colorscale color', default="red", group='cosmetic')
         self.add_argument(parser, '--color2', type=str, help='Colorscale color 2', default="red", group='cosmetic')
+
         self.add_argument(parser, '-t','--time', action='store_true', group='temporal')
         self.add_argument(parser, '-d','--date', action='store_true', group='temporal')
         self.add_argument(parser, '-m', '--month', action='store_true', group='temporal')
@@ -121,15 +123,17 @@ class ArgParser:
         self.add_argument(parser, '-a', '--country', action='store_true', group='geographical')
         self.add_argument(parser, '-b', '--state', action='store_true', group='geographical')
         self.add_argument(parser, '-c', '--locality', action='store_true', group='geographical')
+        self.add_argument(parser, '-e', '--elevation', action='store_true', group='geographical')
+
         self.add_argument(parser, '-s','--solar', action='store_true', group='terrestrial')
         self.add_argument(parser, '-S','--SOLAR', action='store_true', group='terrestrial')
         self.add_argument(parser, '-u','--clouds', action='store_true', group='terrestrial')
         self.add_argument(parser, '-U', '--CLOUDS', action='store_true', group='terrestrial')
         self.add_argument(parser, '-p', '--precipitation', action='store_true', group='terrestrial')
         self.add_argument(parser, '-w', '--snow', action='store_true', group='terrestrial')
-        self.add_argument(parser, '-e', '--elevation', action='store_true', group='terrestrial')
-        self.add_argument(parser, '--heading', type=str, default=None, help='Update heading; orient towards object i.e. solar', group='terrestrial')
-        self.add_argument(parser, '--drivingdirection', action='store_true', help='Update driving direction', group='terrestrial')
+
+        self.add_argument(parser, '-H', '--heading', type=str, default=None, help='Update heading; orient towards object i.e. solar')
+        self.add_argument(parser, '-D', '--drivingdirection', action='store_true', help='Update driving direction')
 
     def add_delete_arguments(self, parser):
         self.add_argument(parser, 'file', type=str, help='Path to file to delete')
@@ -240,9 +244,6 @@ class MetaTag:
                                 tags.extend([altitude_str, azimuth_str])
                                 self.attr_sets['altitudes'].add(altitude_str)
                                 self.attr_sets['azimuths'].add(azimuth_str)
-
-                            if self.args.heading == 'solar':
-                                item.update({'heading': float(azimuth), 'pitch': float(altitude)})
                         except KeyError:
                             if self.arg_parser.cached:
                                 raise SVMap.CacheError()
@@ -459,110 +460,125 @@ class MetaFetchParser:
     async def fetch_meta(self, loc, progress):
         lat, lng = loc['lat'], loc['lng']
 
+        if (
+            (('imageDate' in loc or 'timestamp' in loc) and (self.arg_parser.group_true('temporal') or self.arg_parser.group_true('terrestrial'))) or
+            ('country' in loc and self.args.country)
+        ) and not self.args.no_cache_in:
+            progress.update(1)
+            return loc
+
         async with aiohttp.ClientSession() as session:
-            if ('imageDate' not in loc and 'timestamp' not in loc) or ('country' not in loc and self.args.country) or self.args.heading == "drivingdirection" or self.args.no_cache_in:
-                try:
-                    imagePayload = f"""
+            try:
+                imagePayload = f"""
+                [
+                    ["apiv3", null, null, null, "US", null, null, null, null, null],
                     [
-                        ["apiv3", null, null, null, "US", null, null, null, null, null],
+                        [null, null, {lat}, {lng}],
+                        {self.RADIUS}
+                    ],
+                    [
+                        null,
+                        ["en", "US"],
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        [2],
+                        null,
                         [
-                            [null, null, {lat}, {lng}],
-                            {self.RADIUS}
-                        ],
-                        [
-                            null,
-                            ["en", "US"],
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            [2],
-                            null,
                             [
-                                [
-                                    [2, true, 2]
-                                ]
+                                [2, true, 2]
                             ]
-                        ],
-                        [
-                            [2, 6]
                         ]
+                    ],
+                    [
+                        [2, 6]
                     ]
-                    """
+                ]
+                """
 
-                    async with session.post(
-                        'https://maps.googleapis.com/$rpc/google.internal.maps.mapsjs.v1.MapsJsInternalService/SingleImageSearch',
-                        headers={'content-type': 'application/json+protobuf'},
-                        data=imagePayload,
-                    ) as response:
-                        res = await response.text()
-                        loads = json.loads(res)
-                        
-                        # Driving direction
-                        try:
-                            loc['drivingDirection'] = loads[1][5][0][3][0][4][2][2][0]
-                        except IndexError:
-                            loc['drivingDirection'] = None
+                async with session.post(
+                    'https://maps.googleapis.com/$rpc/google.internal.maps.mapsjs.v1.MapsJsInternalService/SingleImageSearch',
+                    headers={'content-type': 'application/json+protobuf'},
+                    data=imagePayload,
+                ) as response:
+                    res = await response.text()
+                    loads = json.loads(res)
+                    
+                    # Driving direction
+                    try:
+                        loc['drivingDirection'] = loads[1][5][0][3][0][4][2][2][0]
+                    except IndexError:
+                        loc['drivingDirection'] = None
 
-                        # Elevation
-                        try:
-                            loc['elevation'] = loads[1][5][0][3][0][2][2][1][0]
-                        except IndexError:
-                            loc['elevation'] = None
+                    # Elevation
+                    try:
+                        loc['elevation'] = loads[1][5][0][3][0][2][2][1][0]
+                    except IndexError:
+                        loc['elevation'] = None
 
-                        # Country
-                        try:
-                            country = loads[1][5][0][1][4]
-                        except IndexError:
-                            country = None
+                    # Country
+                    try:
+                        country = loads[1][5][0][1][4]
+                    except IndexError:
+                        country = None
 
-                        # Subdivisions
+                    # Subdivisions
+                    try:
+                        if loads[1][3][2] is not None and len(loads[1][3][2]) > 1:
+                            subdivision = loads[1][3][2][1][0]
+                        else:
+                            subdivision = loads[1][3][2][0][0] if loads[1][3][2] is not None else None
+                        subdivision = subdivision.split(', ') if subdivision else None
+                    except IndexError:
+                        subdivision = None
+                                            
+                    state = subdivision[-1] if subdivision else None
+                    locality = subdivision[-2] if subdivision and len(subdivision) > 1 else None
+
+                    loc['country'] = country
+                    loc['state'] = state
+                    loc['locality'] = locality
+
+                    # Image date
+                    try:
+                        month = str(loads[1][6][7][0])+"-"+str(loads[1][6][7][1])
+                    except IndexError:
+                        month = None
+                    loc['imageDate'] = month
+
+                    # Pano ID
+                    try:
+                        loc['panoId'] = loads[1][1][1]
+                    except IndexError:
+                        loc['panoId'] = None
+
+                    if self.args.heading == "drivingdirection":
                         try:
-                            if loads[1][3][2] is not None and len(loads[1][3][2]) > 1:
-                                subdivision = loads[1][3][2][1][0]
+                            if loc['drivingDirection']:
+                                loc['heading'] = loc['drivingDirection']
                             else:
-                                subdivision = loads[1][3][2][0][0] if loads[1][3][2] is not None else None
-                            subdivision = subdivision.split(', ') if subdivision else None
+                                raise IndexError
                         except IndexError:
-                            subdivision = None
-                                                
-                        state = subdivision[-1] if subdivision else None
-                        locality = subdivision[-2] if subdivision and len(subdivision) > 1 else None
-
-                        loc['country'] = country
-                        loc['state'] = state
-                        loc['locality'] = locality
-
-                        # Image date
+                            loc['heading'] = 0
+                    elif ',' in self.args.heading:
                         try:
-                            month = str(loads[1][6][7][0])+"-"+str(loads[1][6][7][1])
-                        except IndexError:
-                            month = None
-                        loc['imageDate'] = month
+                            heading, pitch = map(int, self.args.heading.split(','))
+                            loc.update({
+                                'heading': heading % 360,
+                                'pitch': pitch % 90
+                            })
+                        except:
+                            raise ValueError("Invalid 'heading,pitch' tuple")
 
-                        # Pano ID
-                        try:
-                            loc['panoId'] = loads[1][1][1]
-                        except IndexError:
-                            loc['panoId'] = None
-
-                        if self.args.heading == "drivingdirection":
-                            try:
-                                if loc['drivingDirection']:
-                                    loc['heading'] = loc['drivingDirection']
-                                else:
-                                    raise IndexError
-                            except IndexError:
-                                loc['heading'] = 0
-
-                except Exception as e:
-                    logging.error(e)
-                    self.err += 1
-                    self.map.locs.remove(loc)
-                    progress.update(1)
-                    return None
+            except Exception as e:
+                logging.error(e)
+                self.err += 1
+                self.map.locs.remove(loc)
+                progress.update(1)
+                return None
 
             progress.update(1)
             return loc
@@ -587,6 +603,8 @@ class MetaFetchParser:
                 loc['altitudeClass'] = Classifier.altitude(altitude)
                 loc['azimuthClass'] = Classifier.direction(azimuth)
                 loc['sunEvent'] = Classifier.sun_event(altitude, azimuth)
+            if self.args.heading == 'solar':
+                loc.update({'heading': float(azimuth), 'pitch': float(altitude)})
         except Exception as e:
             logging.error(e)
             self.err += 1
@@ -736,8 +754,10 @@ class MetaFetchParser:
 
         progress.close()
         if self.err > 0:
-            #print(f"Errors: {self.err}")
-            print("Retained:", len(results))
+            retained = len(results)
+            print("Retained:", retained)
+            if retained == 0:
+                raise ValueError("No data retained")
 
 
 
@@ -757,7 +777,7 @@ def main():
     FOLDERS['views']['exists'] = len(FOLDERS['views']['files']) > 0
 
     if argparser.args.command == 'tag':
-        if not any(getattr(argparser.args, k) for k in argparser.SHORT_ARGS) and not argparser.group_true('geographical'):
+        if not any(getattr(argparser.args, k) for k in argparser.SHORT_ARGS) and not argparser.args.heading and not argparser.args.drivingdirection:
             raise ValueError("At least one output must be specified")
         if argparser.args.round and (not argparser.args.time or argparser.args.round > 60 or argparser.args.round <= 1):
             raise ValueError("Invalid round value")
@@ -778,7 +798,7 @@ def main():
         mfparser = MetaFetchParser(map_obj, argparser)
         asyncio.run(mfparser.bulk_parse(mfparser.fetch_meta))
 
-        if argparser.group_true('temporal') or argparser.group_true('terrestrial'):
+        if argparser.group_true('temporal') or argparser.group_true('terrestrial') or argparser.args.heading == 'solar':
             logging.info("Temporal parsing")
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.timestamp))
@@ -786,7 +806,7 @@ def main():
                 logging.error("Temporal data retrieval error: ",e)
                 exit(1)
         
-        if argparser.args.solar or argparser.args.SOLAR:
+        if argparser.args.solar or argparser.args.SOLAR or argparser.args.heading == 'solar':
             logging.info("Solar parsing")
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.solar))
@@ -804,14 +824,15 @@ def main():
         
         if not CONFIG['keepUnknownFields']:
             map_obj.purge(SVMap.KNOWN_FIELDS)
-            
-        map_obj.save(Path(f"{FOLDERS['meta']['path']}/{FOLDERS['base']['files'].stem}.json").absolute()) # Save to meta folder
+        
+        if not argparser.args.no_cache_out:
+            map_obj.save(Path(f"{FOLDERS['meta']['path']}/{FOLDERS['base']['files'].stem}.json").absolute()) # Save to meta folder
         
         # MetaTag
         if argparser.args.meta:
             exit(0)
         meta = MetaTag(map_obj, argparser)
-        map_obj.save(Path(f"{FOLDERS['tagged']['path']}/{FOLDERS['base']['files'].stem}-{arg_string}.json"))
+        map_obj.save(Path(f"{FOLDERS['tagged']['path']}/{FOLDERS['base']['files'].stem}-{arg_string}.json")) # Save to tagged folder
 
         end_time = time()
         runtime = end_time - meta.start_time

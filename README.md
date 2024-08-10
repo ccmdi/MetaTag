@@ -46,19 +46,21 @@ If you are running `metatag.py`, this is the list of arguments that are presentl
 * `-a --country`
 * `-b --state`
 * `-c --locality`
-* `-s --solar` Class-based information about the sun, such as cardinal directions
-* `-S --SOLAR` Raw information about the sun (rounded to nearest integer)
-* `-u --clouds` Class-based information about cloud cover
-* `-U --CLOUDS` Raw information about the cloud cover (rounded to nearest integer)
+* `-s --solar` Direction/altitude cardinal directions
+* `-S --SOLAR` Direction/altitude exact (° rounded to nearest integer)
+* `-u --clouds` Cloud cover classification (Overcast, Mostly Cloudy, Partly Cloudy, Clear)
+* `-U --CLOUDS` Cloud cover exact (% rounded to nearest integer)
 * `-p --precipitation` Precipitation (mm)
 * `-s --snow` Snow depth (m)
 * `-e --elevation` Elevation (m)
+* `-D --drivingdirection` Driving direction (°)
+* `-H --heading` Orient heading to \[drivingdirection, solar, `<heading>,<pitch>`\]
 
 ### Options
 * `--round <int>` Integer by which to round **time** (nearest 15 min, 30 min, etc.)[^2]
 * `--load` Loads date from tags
 * `--accuracy <int>` Accuracy of date fetch (in seconds) -- defaults to 1
-* `-n --no-cache-in` No cache input (ignores existing meta file)
+* `-n --no-cache-in` No cache input (ignores existing meta file; **this will overwrite**)
 * `-N --no-cache-out` No cache output (does not create meta file)
 * `-M --meta` Only creates meta file, no tagging
 
