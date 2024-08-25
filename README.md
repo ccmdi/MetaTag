@@ -32,6 +32,8 @@ To enable functionality, follow these steps:
 1. `git clone https://github.com/ccmdi/MetaTag.git`
 2. `pip install -r requirements.txt`
 
+Example command: `python metatag.py tag 'maps\base\Tunisia Car.json' -d`
+
 # GUI
 For any given map, simply upload the file. You will see a view showing settings to add on the left, and a simplistic map viewer on the right. Checking the checkboxes and clicking submit will run the script with for desired attributes, and refresh the map view with the new map file. It will also be outputted to the `maps/tagged` folder for external use.
 
