@@ -2,7 +2,7 @@
 from pathlib import Path
 import csv, json
 import argparse
-from os import path as os_path, remove as os_remove
+import os
 import re
 
 # Implicit processing
@@ -56,7 +56,7 @@ if DEBUG:
 
 
 for folder in FOLDERS.values():
-    if not os_path.exists(folder['path']):
+    if not os.path.exists(folder['path']):
         raise FileNotFoundError(f"Path {folder['path']} does not exist")
 
 
@@ -307,7 +307,7 @@ class MetaTag:
                     else:
                         sortby = "lexicographic"
                         
-                    self.order_tags(attr_set, sortby=sortby, tag_type=attr_name)
+                    self.order_tags(attr_set, sortby=sortby)
 
         except Exception as e:
             logging.error(f'Error: {e}')
@@ -838,33 +838,38 @@ def main():
 
         logging.debug(f"Tagging runtime: {round(runtime,5)} seconds")
     elif argparser.args.command == 'delete':
+        deletion_list = []
+        
         if argparser.args.cascade or argparser.args.meta:
-            try:
-                if not FOLDERS['meta']['exists']:
-                    raise FileNotFoundError(f"Meta file {FOLDERS['meta']['files']} does not exist")
-                
-                # os_remove(FOLDERS['meta']['files'])
-                print("Deleted " + str(FOLDERS['meta']['files']))
-            except FileNotFoundError as e:
-                logging.error("Failed to delete: " + str(e))
-
+            if FOLDERS['meta']['exists']:
+                deletion_list.append(FOLDERS['meta']['files'])
+        
         if argparser.args.cascade or argparser.args.tagged:
-            for file in FOLDERS['tagged']['files']:
-                try:
-                    # os_remove(file)
-                    print("Deleted " + str(file))
-                except FileNotFoundError as e:
-                    logging.error("Failed to delete: " + str(e))
-
+            deletion_list.extend(FOLDERS['tagged']['files'])
+        
         if argparser.args.cascade or argparser.args.base:
+            if FOLDERS['base']['exists']:
+                deletion_list.append(FOLDERS['base']['files'])
+        
+        if deletion_list:
+            print("The following files will be deleted:")
+            for file in deletion_list:
+                print(f" - {file}")
+            
+            confirmation = input("Are you sure you want to proceed? (y/n): ").lower()
+            if confirmation != 'y':
+                return
+        
+        for file in deletion_list:
             try:
-                if not FOLDERS['base']['exists']:
-                    raise FileNotFoundError(f"Base file {FOLDERS['base']['files']} does not exist")
-                
-                # os_remove(FOLDERS['base']['files'])
-                print("Deleted " + str(FOLDERS['base']['files']))
+                # os.remove(file)
+                print(f"Deleted {file}")
             except FileNotFoundError as e:
-                logging.error("Failed to delete: " + str(e))
+                logging.error(f"Failed to delete: {e}")
+        
+        if not deletion_list:
+            print("No files found with designated name")
+
     elif argparser.args.command == 'clear':
         map_obj = SVMap(argparser.args.file)
         removed = 0
@@ -881,6 +886,7 @@ def main():
                 map_obj.save(argparser.filepath.absolute())
             else:
                 exit(0)
+
     elif argparser.args.command == 'extract':
         if(argparser.cached):
             map_obj = SVMap(argparser.cached_file)
