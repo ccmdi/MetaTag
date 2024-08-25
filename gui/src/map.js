@@ -12,16 +12,38 @@ class SVLink {
 class SVMap {
     constructor(json) {
         this.json = json;
-        this.locations = json.customCoordinates;
+        this.locations = this.shuffle(json.customCoordinates);
         this.filteredLocations = this.locations;
-        // this.markers = [];
+        this.maxMarkers = 30000;
 
-        this.map = L.map('map', {zoomControl: false});
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}' + (L.Browser.retina ? '@2x.png' : '.png'), {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        this.gridSize = 1; // Grid size in degrees
+        this.createGrid();
+
+        const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
+
+        this.map = L.map('map', {
+            zoomControl: false,
+            attributionControl: false,
+            maxBounds: worldBounds,
+            maxBoundsViscosity: 1.0,
+            minZoom: 3,  // Set a minimum zoom level
+            bounceAtZoomLimits: false  // Prevent bouncing at zoom limits
+        });
+
+        L.control.attribution({
+            prefix: false,
+            position: 'bottomright'
         }).addTo(this.map);
 
-        this.pixiContainer = new PIXI.ParticleContainer({maxSize: this.locations.length, vertices: true});
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}' + (L.Browser.retina ? '@2x.png' : '.png'), {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            noWrap: true
+        }).addTo(this.map);
+
+        this.updateInfoBox();
+        this.fitToBounds();
+
+        this.pixiContainer = new PIXI.ParticleContainer({maxSize: Math.min(this.locations.length, this.maxMarkers), vertices: true});
         this.pixiOverlay = L.pixiOverlay((utils) => {
             const renderer = utils.getRenderer();
             const container = utils.getContainer();
@@ -29,8 +51,16 @@ class SVMap {
             const project = this.pixiOverlay.utils.latLngToLayerPoint;
 
             this.pixiContainer.removeChildren();
+
+            const bounds = this.map.getBounds();
             
-            this.filteredLocations.forEach((loc) => {
+            const visibleLocations = this.filteredLocations.filter(loc => 
+                bounds.contains(L.latLng(loc.lat, loc.lng))
+            );
+
+            const locationsToRender = visibleLocations.slice(0, this.maxMarkers);
+            
+            locationsToRender.forEach((loc) => {
                 const markerCoords = project([loc.lat, loc.lng]);
                 const marker = new PIXI.Sprite(markerTexture);
                 
@@ -88,10 +118,6 @@ class SVMap {
         this.tooltip = document.getElementById("tooltip");
 
         this.initialize();
-        
-        //Set initial view
-        let mapGroup = new L.featureGroup(this.filteredLocations.map((loc) => L.marker([loc.lat, loc.lng])));
-        this.map.fitBounds(mapGroup.getBounds());
 
         // Tooltip handler
         this.tooltipHandler = (event) => {
@@ -165,15 +191,81 @@ class SVMap {
         this.map.on('click', this.SVLinkHandler);
 
         this.pixiOverlay.addTo(this.map);
+
+        this.map.on('drag', () => {
+            this.map.panInsideBounds(worldBounds, { animate: false });
+        });
+
+        this.map.on('zoom', () => {
+            console.log(this.map.getZoom());
+            if (this.map.getZoom() < this.map.getMinZoom()) {
+                this.map.setZoom(this.map.getMinZoom());
+            }
+        });
+
+        this.map.on('drag', () => {
+            this.map.panInsideBounds(worldBounds, { animate: false });
+        });
+    }
+
+    shuffle(array) {
+        let currentIndex = array.length, randomIndex;
+        while (currentIndex != 0) {
+            randomIndex = Math.floor(Math.random() * currentIndex);
+            currentIndex--;
+            [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+        }
+        return array;
+    }
+
+    createGrid() {
+        this.grid = {};
+        this.locations.forEach((loc, index) => {
+            const cellX = Math.floor(loc.lng / this.gridSize);
+            const cellY = Math.floor(loc.lat / this.gridSize);
+            const cellKey = `${cellX},${cellY}`;
+            if (!this.grid[cellKey]) {
+                this.grid[cellKey] = [];
+            }
+            this.grid[cellKey].push(index);
+        });
+    }
+
+    getPrioritizedLocations() {
+        const prioritizedLocations = [];
+        const cellCounts = Object.values(this.grid).map(indices => indices.length);
+        const avgPointsPerCell = Math.floor(cellCounts.reduce((sum, count) => sum + count, 0) / cellCounts.length);
+
+        Object.entries(this.grid).forEach(([cellKey, indices]) => {
+            // Shuffle indices to randomize selection within each cell
+            const shuffledIndices = this.shuffle([...indices]);
+            
+            // Select up to avgPointsPerCell locations from each cell
+            const selectedIndices = shuffledIndices.slice(0, avgPointsPerCell);
+            
+            selectedIndices.forEach(index => {
+                prioritizedLocations.push({
+                    location: this.locations[index],
+                    priority: 1 / indices.length // Keep original priority for sorting
+                });
+            });
+        });
+
+        return prioritizedLocations.sort((a, b) => b.priority - a.priority);
     }
 
     initialize() {
+        console.log("Before initialization:", this.locations.slice(0, 10));
         this.filteredLocations = this.locations;
+        console.log("After assignment:", this.filteredLocations.slice(0, 10));
         this.filterMap.forEach((filter) => {
             this.filteredLocations = this.filter(this.filteredLocations, filter);
+            console.log("After filter:", filter, this.filteredLocations.slice(0, 10));
         });
-        console.log(this.filteredLocations);
-        this.tree = new kdTree(this.filteredLocations, distance, ['lat','lng']);
+        console.log("Before kdTree:", this.filteredLocations.slice(0, 10));
+        this.tree = new kdTree([...this.filteredLocations], distance, ['lat','lng']);
+        console.log("After kdTree:", this.filteredLocations.slice(0, 10));
+        this.prioritizedLocations = this.getPrioritizedLocations();
         this.pixiOverlay.redraw();
     }
 
@@ -211,7 +303,39 @@ class SVMap {
 
     markerScaleSize(){
         const zoom = this.map.getZoom();
-        const zoomFactor = 2 ** (9 - zoom);
+        const zoomFactor = 2 ** (9.5 - zoom); //TODO ?
         return zoomFactor;
+    }
+
+    updateInfoBox() {
+        const headline = document.querySelector('#infoBox .headline');
+        const subline = document.querySelector('#infoBox .subline');
+
+        if (headline && subline) {
+            headline.textContent = `${this.json.name || filePath.split('\\').pop().split('.')[0]} - ${this.filteredLocations.length} locations`;
+            
+            this.attributes = new Set();
+            this.filteredLocations.forEach(loc => {
+                Object.keys(loc).forEach(key => {
+                    if (!['lat', 'lng', 'latitude', 'longitude'].includes(key)) {
+                        this.attributes.add(key);
+                    }
+                });
+            });
+            subline.textContent = Array.from(this.attributes).join(' / ');
+        }
+    }
+
+    fitToBounds() {
+        if (this.filteredLocations.length > 0) {
+            const bounds = L.latLngBounds(this.filteredLocations.map(loc => [loc.lat, loc.lng]));
+            this.map.fitBounds(bounds);
+        }
+    }
+
+    updateMap(newFilteredLocations) { // ???
+        this.filteredLocations = newFilteredLocations;
+        this.updateInfoBox();
+        this.fitToBounds();
     }
 }

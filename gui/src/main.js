@@ -30,7 +30,7 @@ function createWindow () {
     autoHideMenuBar: true
   });
 
-  win.loadFile('index.html');
+  win.loadFile('src/index.html');
   if (process.env.NODE_ENV == 'development'){
     win.toggleDevTools();
   }
@@ -44,8 +44,8 @@ app.whenReady().then(() => {
 
 ipcMain.handle('run-python', (event, args) => {
     console.log(args.filePath, args.command, args.selectedOptions);
-    const python = spawn('python', ['metatag.py', args.command, args.filePath, ...args.selectedOptions], {
-        cwd: path.join(__dirname, '../..')
+    const python = spawn('python', ['extraResources/metatag.py', args.command, args.filePath, ...args.selectedOptions], {
+        cwd: path.join(__dirname, '..', '..', 'extraResources')
     });
     
     //Store the process reference

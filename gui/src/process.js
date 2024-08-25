@@ -2,7 +2,8 @@ let filePath;
 let processId;
 var map;
 var filteredAttrs;
-
+let settingsVisible = true;
+let infoBoxVisible = true;
 
 // Process file upload
 document.getElementById('mapFile').addEventListener('change', (event) => {
@@ -15,31 +16,6 @@ window.electronAPI.onFileData(async (data) => {
     var json = JSON.parse(data);
     console.log(json);
 
-    let headline = document.querySelector('#infoBox .headline') //.innerHTML = json['customCoordinates'].length + " locations"
-    let subline = document.querySelector('#infoBox .subline')
-
-    headline.innerHTML = (json['name'] ? json['name'] : filePath.split('\\').pop().split('.')[0]) + ' - ';
-    headline.innerHTML += json.customCoordinates.length + " locations";
-    
-    const attrRedundant = new Set(['lat', 'lng', 'latitude', 'longitude']);
-    const attrSet = new Set(json.customCoordinates.flatMap(obj => 
-        Object.entries(obj).filter(([key, value]) => value !== null && !attrRedundant.has(key)).map(([key]) => key)
-    ));
-    filteredAttrs = Array.from(attrSet);
-    subline.innerHTML = filteredAttrs.join(" / ");
-
-    //Update existing filters
-    const filterSelects = document.getElementsByClassName('filter');
-    Array.from(filterSelects).forEach(select => {
-        select.innerHTML = '';
-        filteredAttrs.forEach(attr => {
-            const option = document.createElement('option');
-            option.value = attr;
-            option.textContent = attr;
-            select.appendChild(option);
-        });
-    });
-
     document.getElementById('uploadContainer').style.display = 'none';
     document.getElementById('settingsContainer').style.display = 'flex';
 
@@ -47,6 +23,17 @@ window.electronAPI.onFileData(async (data) => {
         map.map.remove();
     }
     map = new SVMap(json);
+
+    const filterSelects = document.getElementsByClassName('filter');
+    Array.from(filterSelects).forEach(select => {
+        select.innerHTML = '';
+        map.attributes.forEach(attr => {
+            const option = document.createElement('option');
+            option.value = attr;
+            option.textContent = attr;
+            select.appendChild(option);
+        });
+    });
 });
 
 
@@ -94,17 +81,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const command = "tag";
         window.electronAPI.runPythonScript({ filePath, command, selectedOptions });
-        progressContainer.removeAttribute('hidden');
+        progressContainer.classList.remove('hidden');
     });
 
     const addFilterButton = document.getElementById('addFilter');
     const filterScroll = document.querySelector('.filter-scroll');
 
-    addFilterButton.addEventListener('click', function() {
+    function createFilterItem() {
         const newFilterItem = document.createElement('div');
         const select = document.createElement('select');
         select.className = "filter"
-        filteredAttrs.forEach(attr => {
+        map.attributes.forEach(attr => {
             const option = document.createElement('option');
             option.value = attr;
             option.textContent = attr;
@@ -119,21 +106,69 @@ document.addEventListener('DOMContentLoaded', function() {
                 <option value=">">></option>
                 <option value="<"><</option>
             </select>
-            <textarea class="filter-value" maxlength="8"></textarea>
+            <textarea class="filter-value" maxlength="20"></textarea>
+            <button class="delete-filter">X</button>
         `;
-        filterScroll.appendChild(newFilterItem);
+        
+        const deleteButton = newFilterItem.querySelector('.delete-filter');
+        deleteButton.addEventListener('click', function() {
+            newFilterItem.remove();
+            updateFilters();
+        });
 
+        return newFilterItem;
+    }
+
+    addFilterButton.addEventListener('click', function() {
+        const newFilterItem = createFilterItem();
+        filterScroll.appendChild(newFilterItem);
+        updateFilters();
     });
+
+    function updateFilters() {
+        const filterItems = Array.from(filterScroll.getElementsByClassName('filter-item'));
+        map.filterMap = filterItems.map(item => {
+            const filter = item.querySelector('.filter');
+            const operator = item.querySelector('.filter-operation');
+            const value = item.querySelector('.filter-value');
+            return {
+                filter: filter ? filter.value : null,
+                operator: operator ? operator.value : null,
+                value: value ? value.value : null
+            };
+        });
+        map.initialize();
+    }
+
+    filterScroll.addEventListener('change', updateFilters);
 
     // Cancel logic
     document.getElementById('progressCancel').addEventListener('click', () => {
         if (processId) {
             window.electronAPI.cancelPythonScript(processId);
-            progressContainer.setAttribute('hidden', true);
+            progressContainer.classList.add('hidden');
         }
     });
-});
 
+    const toggleSettings = document.getElementById('toggleSettings');
+    const toggleInfoBox = document.getElementById('toggleInfoBox');
+    const settingsEl = document.getElementById('settings');
+    const infoBox = document.getElementById('infoBox');
+
+    toggleSettings.addEventListener('click', () => {
+        settingsVisible = !settingsVisible;
+        settingsEl.classList.toggle('hidden', !settingsVisible);
+        
+        if (map && map.map) {
+            map.map.invalidateSize();
+        }
+    });
+
+    toggleInfoBox.addEventListener('click', () => {
+        infoBoxVisible = !infoBoxVisible;
+        infoBox.classList.toggle('hidden', !infoBoxVisible);
+    });
+});
 
 // Progress logic
 window.electronAPI.onPythonScriptProgress((event, message) => {
@@ -143,7 +178,6 @@ window.electronAPI.onPythonScriptProgress((event, message) => {
     const locsTotalRegex = /\/(\d+)/;
     const errorMessageRegex = /(?:Error|Exception):\s*(.+)/;
     const finishedRegex = /^(Saved to.*)/
-
 
     if (!progressRegex.test(message)) {
         const errorMatch = message.match(errorMessageRegex);
@@ -155,7 +189,7 @@ window.electronAPI.onPythonScriptProgress((event, message) => {
                 text: errorMatch[1] || 'An error occurred.',
                 heightAuto: false
             });
-            progressContainer.setAttribute('hidden', true);
+            progressContainer.classList.add('hidden');
         }
         else if(finishedMatch){
             Swal.fire({
@@ -164,7 +198,7 @@ window.electronAPI.onPythonScriptProgress((event, message) => {
                 text: finishedMatch[1],
                 heightAuto: false
             });
-            progressContainer.setAttribute('hidden', true);
+            progressContainer.classList.add('hidden');
         }
     } else {
         const matchProgress = message.match(progressRegex);
@@ -173,7 +207,6 @@ window.electronAPI.onPythonScriptProgress((event, message) => {
         console.log(matchDescription);
         if (matchProgress) {
             console.log(matchProgress[1]);
-            // progress.setAttribute('value', message.match(locsDone)[1]/message.match(locsTotal)[1]); // Assuming 'progress' is defined
             progress.style.width = ((message.match(locsDoneRegex)[1]/message.match(locsTotalRegex)[1])*100) + '%';
         }
 
@@ -189,62 +222,3 @@ window.electronAPI.onPythonScriptPid((event, pid) => {
     processId = pid;
     console.log('Python script PID:', pid);
 });
-
-
-
-
-
-
-
-
-// class FPSMeter {
-//     constructor() {
-//         this.fps = 0;
-//         this.frames = 0;
-//         this.lastTime = performance.now();
-//     }
-
-//     update() {
-//         this.frames++;
-//         const time = performance.now();
-//         if (time >= this.lastTime + 1000) {
-//             this.fps = Math.round((this.frames * 1000) / (time - this.lastTime));
-//             this.lastTime = time;
-//             this.frames = 0;
-//         }
-//         return this.fps;
-//     }
-// }
-
-
-// const fpsMeter = new FPSMeter();
-// let fpsDisplay;
-
-// // Create FPS display element
-// function createFPSDisplay() {
-//     fpsDisplay = document.createElement('div');
-//     fpsDisplay.style.position = 'fixed';
-//     fpsDisplay.style.top = '10px';
-//     fpsDisplay.style.left = '10px';
-//     fpsDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-//     fpsDisplay.style.color = 'white';
-//     fpsDisplay.style.padding = '5px';
-//     fpsDisplay.style.borderRadius = '5px';
-//     fpsDisplay.style.fontFamily = 'Arial, sans-serif';
-//     fpsDisplay.style.fontSize = '14px';
-//     fpsDisplay.style.zIndex = '9999';
-//     document.body.appendChild(fpsDisplay);
-// }
-
-// // Update FPS display
-// function updateFPSDisplay() {
-//     const fps = fpsMeter.update();
-//     if (fpsDisplay) {
-//         fpsDisplay.textContent = `FPS: ${fps}`;
-//     }
-//     requestAnimationFrame(updateFPSDisplay);
-// }
-
-// // Call these functions to set up the FPS display
-// createFPSDisplay();
-// updateFPSDisplay();

@@ -51,4 +51,7 @@ venv.bak/
 
 
 # Node
-gui/src/node_modules/
+gui/dist/*
+gui/node_modules/*
+!gui/package.json
+

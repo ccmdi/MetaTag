@@ -1,0 +1,44 @@
+{
+  "name": "meta-tag",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "set NODE_ENV=development&&electron .",
+    "build": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@electron/packager": "^18.3.3",
+    "electron": "^31.1.0",
+    "electron-builder": "^24.13.3",
+    "electron-reloader": "^1.2.3"
+  },
+  "build": {
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "extraResources": [
+      {
+        "from": "../../",
+        "to": "extraResources",
+        "filter": [
+          "**/*",
+          "!**/node_modules/**",
+          "!**/src/**",
+          "!**/dist/**"
+        ]
+      }
+    ]
+  }
+}
