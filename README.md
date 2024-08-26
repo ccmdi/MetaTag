@@ -24,11 +24,17 @@ This is a tool designed to take simple latitude/longitude JSON's and add various
 [^1]: Requires additional dataset. See `pop` folder for instructions.
 
 The underlying script works around the `maps` folder; the paths can be configured in [config.json](https://github.com/ccmdi/MetaTag/blob/main/config.json). `maps/base` is a convenient folder to store all maps you work with, however you can run the script from anywhere. For any map you wish to tag, there are two options:
-* ~~Run `MetaTag.exe` for a simple GUI and visualization~~
+* Run `MetaTag.exe` from [releases](https://github.com/ccmdi/MetaTag/releases/) for a simple GUI and visualization
 * `python metatag.py <command: tag, delete, clear> <mapfile> <arguments>`
 
 ## Installation
-To enable functionality, follow these steps:
+### Release
+1. Download the latest version from Releases
+2. Extract and run `MetaTag.exe`[^3]
+
+[^3]: This will `pip install` the necessary dependencies, thus Python is still required.
+
+### Git
 1. `git clone https://github.com/ccmdi/MetaTag.git`
 2. `pip install -r requirements.txt`
 
