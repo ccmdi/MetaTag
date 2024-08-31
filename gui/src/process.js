@@ -13,27 +13,29 @@ document.getElementById('mapFile').addEventListener('change', (event) => {
   
 // Retrieve file data
 window.electronAPI.onFileData(async (data) => {
-    var json = JSON.parse(data);
-    console.log(json);
+    try {
+        var json = JSON.parse(data);
+        if (!json.customCoordinates) {
+            throw new Error('Missing customCoordinates.');
+        }
 
-    document.getElementById('uploadContainer').style.display = 'none';
-    document.getElementById('settingsContainer').style.display = 'flex';
+        document.getElementById('uploadContainer').style.display = 'none';
+        document.getElementById('settingsContainer').style.display = 'flex';
 
-    if(map){
-        map.map.remove();
-    }
-    map = new SVMap(json);
-
-    const filterSelects = document.getElementsByClassName('filter');
-    Array.from(filterSelects).forEach(select => {
-        select.innerHTML = '';
-        map.attributes.forEach(attr => {
-            const option = document.createElement('option');
-            option.value = attr;
-            option.textContent = attr;
-            select.appendChild(option);
+        if (map) {
+            map.map.remove();
+        }
+        map = new SVMap(json);
+    } catch (error) {
+        console.error('Error parsing JSON:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Invalid JSON',
+            text: error.message,
+            heightAuto: false
         });
-    });
+        document.getElementById('mapFile').value = '';
+    }
 });
 
 
@@ -43,9 +45,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const settings = document.getElementById('settings');
     const options = document.getElementById('options');
-
-    const filters = document.getElementsByClassName('filter');
-    const filterValues = document.getElementsByClassName('filterValue');
 
     const tagButton = document.getElementById('tagButton');
 
@@ -88,59 +87,62 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterScroll = document.querySelector('.filter-scroll');
 
     function createFilterItem() {
+        const maxFilters = 10;
+        const currentFilters = filterScroll.querySelectorAll('.filter-item').length;
+        if (currentFilters >= maxFilters) {
+            return null;
+        }
+    
         const newFilterItem = document.createElement('div');
-        const select = document.createElement('select');
-        select.className = "filter"
-        map.attributes.forEach(attr => {
-            const option = document.createElement('option');
-            option.value = attr;
-            option.textContent = attr;
-            select.appendChild(option);
-        });
-
         newFilterItem.className = 'filter-item';
+    
+        const selectHtml = Array.from(map.attributes)
+            .map(attr => `<option value="${attr}">${formatAttrString(attr)}</option>`)
+            .join('');
+    
         newFilterItem.innerHTML = `
-            ${select.outerHTML}
+            <select class="filter">
+                ${selectHtml}
+            </select>
             <select class="filter-operation">
                 <option value="=">=</option>
                 <option value=">">></option>
                 <option value="<"><</option>
             </select>
-            <textarea class="filter-value" maxlength="20"></textarea>
+            <div class="filter-value" contenteditable maxlength="20"></div>
             <button class="delete-filter">X</button>
         `;
         
+        newFilterItem.querySelectorAll('select').forEach(el => {
+            el.addEventListener('change', () => map.initialize());
+        });
+
+        newFilterItem.querySelectorAll('div.filter-value').forEach(el => {
+            el.addEventListener('blur', () => map.initialize());
+            el.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    el.blur();
+                }
+            });
+        });
+    
         const deleteButton = newFilterItem.querySelector('.delete-filter');
         deleteButton.addEventListener('click', function() {
             newFilterItem.remove();
-            updateFilters();
+            map.initialize();
         });
-
+    
         return newFilterItem;
     }
-
+    
     addFilterButton.addEventListener('click', function() {
         const newFilterItem = createFilterItem();
-        filterScroll.appendChild(newFilterItem);
-        updateFilters();
+        if (newFilterItem) {
+            filterScroll.appendChild(newFilterItem);
+            map.initialize();
+        }
     });
-
-    function updateFilters() {
-        const filterItems = Array.from(filterScroll.getElementsByClassName('filter-item'));
-        map.filterMap = filterItems.map(item => {
-            const filter = item.querySelector('.filter');
-            const operator = item.querySelector('.filter-operation');
-            const value = item.querySelector('.filter-value');
-            return {
-                filter: filter ? filter.value : null,
-                operator: operator ? operator.value : null,
-                value: value ? value.value : null
-            };
-        });
-        map.initialize();
-    }
-
-    filterScroll.addEventListener('change', updateFilters);
 
     // Cancel logic
     document.getElementById('progressCancel').addEventListener('click', () => {
@@ -204,7 +206,6 @@ window.electronAPI.onPythonScriptProgress((event, message) => {
         const matchProgress = message.match(progressRegex);
         const matchDescription = message.match(descriptionRegex);
 
-        console.log(matchDescription);
         if (matchProgress) {
             console.log(matchProgress[1]);
             progress.style.width = ((message.match(locsDoneRegex)[1]/message.match(locsTotalRegex)[1])*100) + '%';

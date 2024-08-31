@@ -1,11 +1,14 @@
 {
   "name": "meta-tag",
-  "version": "1.0.0",
-  "description": "",
+  "version": "1.0.1",
+  "description": "A tool for processing and tagging Street View metadata",
   "main": "src/main.js",
   "scripts": {
     "start": "set NODE_ENV=development&&electron .",
-    "build": "electron-packager . MetaTag --platform=win32 --arch=x64 --out=dist --asar --overwrite --ignore=\"(node_modules|dist|build)\" --icon=../MetaTag.ico"
+    "build:win": "electron-packager . MetaTag --platform=win32 --arch=x64 --out=dist --asar --overwrite --ignore=\"(node_modules|dist|build)\" --icon=../MetaTag.ico",
+    "build:mac": "electron-packager . MetaTag --platform=darwin --arch=x64 --out=dist --asar --overwrite --ignore=\"(node_modules|dist|build)\" --icon=../MetaTag.icns",
+    "build:linux": "electron-packager . MetaTag --platform=linux --arch=x64 --out=dist --asar --overwrite --ignore=\"(node_modules|dist|build)\"",
+    "build:all": "npm run build:win && npm run build:mac && npm run build:linux"
   },
   "build": {
     "extraResources": [

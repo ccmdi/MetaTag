@@ -6,7 +6,6 @@ function distance(a, b) {
 function formatAttrString(str) {
     str = str.replace(/(_[a-z])/g, (match) => match[1].toUpperCase());
 
-    // Split the string at the first uppercase letter after the first character
     let parts = str.match(/^[a-z]+|[A-Z][a-z]*/g);
     
     if (parts) {
@@ -17,4 +16,12 @@ function formatAttrString(str) {
     }
     
     return str;
+}
+
+
+function getOctodirectionalArrow(angle) {
+    const arrows = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+    const normalizedAngle = ((angle % 360) + 360) % 360;
+    const index = Math.round(normalizedAngle / 45) % 8;
+    return arrows[index];
 }

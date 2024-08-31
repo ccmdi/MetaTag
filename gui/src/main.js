@@ -4,15 +4,16 @@ const fs = require('fs');
 const path = require('path');
 const processMap = new Map();
 
-const env = process.env.NODE_ENV || 'development';
+const isDev = process.env.NODE_ENV === 'development';
+const resourcesPath = isDev ? '..' : process.resourcesPath
 
-if (env === 'development') {
+if (isDev) {
     try {
         require('electron-reloader')(module, {
             debug: true,
             watchRenderer: true
         });
-    } catch (_) { console.log('Error'); }
+    } catch (_) { console.log('Error loading electron-reloader'); }
 }
 
 function createWindow() {
@@ -22,27 +23,37 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            devTools: process.env.NODE_ENV == 'development',
+            devTools: isDev,
             preload: path.join(__dirname, 'preload.js')
         },
         autoHideMenuBar: true
     });
 
     win.loadFile('src/index.html');
-    if (process.env.NODE_ENV == 'development') {
+    if (isDev) {
         win.toggleDevTools();
     }
 }
 
+async function setupPythonEnvironment() {
+    if (isDev) return;
+
+    try {
+        await checkPythonAndPip();
+        await installRequirements();
+    } catch (error) {
+        dialog.showErrorBox('Setup Error', `Error: ${error.message}\n\nPlease ensure Python and pip are correctly installed to use this application.`);
+        app.quit();
+    }
+}
+
 function checkPythonAndPip() {
+    if (isDev) return Promise.resolve();
+
     return new Promise((resolve, reject) => {
         const pythonCheck = spawn('python', ['--version']);
         pythonCheck.on('error', (error) => {
-            if (error.code === 'ENOENT') {
-                reject(new Error('Python is not installed or not in PATH'));
-            } else {
-                reject(error);
-            }
+            reject(new Error('Python is not installed or not in PATH'));
         });
         pythonCheck.on('close', (code) => {
             if (code !== 0) {
@@ -50,11 +61,7 @@ function checkPythonAndPip() {
             } else {
                 const pipCheck = spawn('pip', ['--version']);
                 pipCheck.on('error', (error) => {
-                    if (error.code === 'ENOENT') {
-                        reject(new Error('pip is not installed or not in PATH'));
-                    } else {
-                        reject(error);
-                    }
+                    reject(new Error('pip is not installed or not in PATH'));
                 });
                 pipCheck.on('close', (code) => {
                     if (code !== 0) {
@@ -69,9 +76,11 @@ function checkPythonAndPip() {
 }
 
 function installRequirements() {
+    if (isDev) return Promise.resolve();
+
     return new Promise((resolve, reject) => {
-        const requirementsPath = path.join(process.resourcesPath, 'requirements.txt');
-        const flagPath = path.join(process.resourcesPath, 'requirements_installed.flag');
+        const requirementsPath = path.join(resourcesPath, 'requirements.txt');
+        const flagPath = path.join(resourcesPath, 'requirements_installed.flag');
 
         if (fs.existsSync(flagPath)) {
             console.log('Requirements already installed.');
@@ -82,13 +91,8 @@ function installRequirements() {
         console.log('Installing requirements...');
         const pip = spawn('pip', ['install', '-r', requirementsPath]);
 
-        pip.stdout.on('data', (data) => {
-            console.log(`stdout: ${data}`);
-        });
-
-        pip.stderr.on('data', (data) => {
-            console.error(`stderr: ${data}`);
-        });
+        pip.stdout.on('data', (data) => console.log(`stdout: ${data}`));
+        pip.stderr.on('data', (data) => console.error(`stderr: ${data}`));
 
         pip.on('close', (code) => {
             if (code === 0) {
@@ -96,29 +100,20 @@ function installRequirements() {
                 console.log('Requirements installed successfully.');
                 resolve();
             } else {
-                console.error(`pip process exited with code ${code}`);
                 reject(new Error(`pip process exited with code ${code}`));
             }
         });
     });
 }
 
-app.whenReady().then(() => {
-    checkPythonAndPip()
-        .then(() => installRequirements())
-        .then(() => {
-            createWindow();
-        })
-        .catch((error) => {
-            dialog.showErrorBox('Setup Error', `Error: ${error.message}\n\nPlease install Python and pip to use this application.`);
-            app.quit();
-        });
+app.whenReady().then(async () => {
+    await setupPythonEnvironment();
+    createWindow();
 });
 
 ipcMain.handle('run-python', (event, args) => {
-    const pythonScriptPath = path.join(process.resourcesPath, 'metatag.py');
-    const python = spawn('python', [pythonScriptPath, args.command, args.filePath, ...args.selectedOptions], {
-        cwd: process.resourcesPath
+    const python = spawn('python', ['metatag.py', args.command, args.filePath, ...args.selectedOptions], {
+        cwd: resourcesPath
     });
     
     event.sender.send('python-script-pid', python.pid);
@@ -127,7 +122,7 @@ ipcMain.handle('run-python', (event, args) => {
     python.stdout.on('data', (data) => {
         console.log(`stdout: ${data}`);
         if(data.toString().includes('Saved to')){
-            filePath = data.toString().split('Saved to ')[1].trim();
+            const filePath = data.toString().split('Saved to ')[1].trim();
             fs.readFile(filePath, 'utf-8', (err, data) => {
                 if (err) {
                     console.error('Failed to read file', err);

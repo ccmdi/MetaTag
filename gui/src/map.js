@@ -26,8 +26,8 @@ class SVMap {
             attributionControl: false,
             maxBounds: worldBounds,
             maxBoundsViscosity: 1.0,
-            minZoom: 3,  // Set a minimum zoom level
-            bounceAtZoomLimits: false  // Prevent bouncing at zoom limits
+            minZoom: 3,
+            bounceAtZoomLimits: false
         });
 
         L.control.attribution({
@@ -82,39 +82,6 @@ class SVMap {
         this.filterAdd = document.getElementById("addFilter");
         this.filterMap = new Map();
 
-        this.filterContainer.addEventListener("change", () => {
-            const filterItems = Array.from(this.filterContainer.getElementsByClassName('filter-item'));
-            this.filterMap = filterItems.map(item => {
-                const filter = item.querySelector('.filter');
-                const operator = item.querySelector('.filter-operation');
-                const value = item.querySelector('.filter-value');
-                console.log(value);
-                return {
-                    filter: filter ? filter.value : null,
-                    operator: operator ? operator.value : null,
-                    value: value ? value.value : null
-                };
-            });
-            this.initialize();
-            console.log(this.filterMap);
-        });
-        this.filterAdd.addEventListener("click", () => {
-            const filterItems = Array.from(this.filterContainer.getElementsByClassName('filter-item'));
-            this.filterMap = filterItems.map(item => {
-                const filter = item.querySelector('.filter');
-                const operator = item.querySelector('.filter-operation');
-                const value = item.querySelector('.filter-value');
-                console.log(value);
-                return {
-                    filter: filter ? filter.value : null,
-                    operator: operator ? operator.value : null,
-                    value: value ? value.value : null
-                };
-            });
-            this.initialize();
-            console.log(this.filterMap);
-        });
-
         this.tooltip = document.getElementById("tooltip");
 
         this.initialize();
@@ -122,58 +89,51 @@ class SVMap {
         // Tooltip handler
         this.tooltipHandler = (event) => {
             const proximalNode = this.proximalNode(event, 0.1);
-            if (!proximalNode.mouseOnMarker){
-                tooltip.style.visibility = 'hidden';
+            if (!proximalNode.mouseOnMarker) {
+                this.tooltip.style.visibility = 'hidden';
                 return;
             }
-            else {
-                tooltip.style.visibility = 'visible';
-            }
-        
+
             const workingText = [];
-            const { country, state, locality } = proximalNode.nearest;
-    
-            
-            if (country || state || locality) {
-                workingText.push(`<strong>${[locality, state, country].filter(Boolean).join(', ')}</strong>`);
+            const { country, state, locality, lat, lng } = proximalNode.nearest;
+
+            const locationHead = [locality, state, country].filter(Boolean);
+            if (locationHead.length) {
+                workingText.push(`<strong>${locationHead.join(', ')}</strong>`);
             }
-        
+
+            const formatValue = (key, value) => {
+                if (key === 'elevation') return `${value.toFixed(2)}m`;
+                if (['heading', 'pitch', 'drivingDirection', 'azimuth', 'altitude'].includes(key)) {
+                    const degrees = `${value.toFixed(2)}°`;
+                    return ['azimuth', 'heading', 'drivingDirection'].includes(key) 
+                        ? `${degrees} ${getOctodirectionalArrow(value)}`
+                        : degrees;
+                }
+                if (key === 'timestamp') {
+                    const tz = tzlookup(lat, lng);
+                    return new Date(value * 1000).toLocaleString('en-US', {
+                        timeZone: tz,
+                        year: 'numeric', month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit', second: '2-digit'
+                    });
+                }
+                return value;
+            };
+
             for (const [key, value] of Object.entries(proximalNode.nearest)) {
-                if(value === null) continue;
-                if ((typeof value === "string" || typeof value === "number") && !config.attrRedundantTooltip.has(key)) {
-                    if (key === "imageDate" && proximalNode.nearest.timestamp) continue;
-                    if (key === 'elevation') {
-                        workingText.push(`${formatAttrString(key)}: ${value.toFixed(2)}m`);
-                        continue;
-                    }
-                    if (key === 'heading' || key === 'pitch' || key === 'drivingDirection') {
-                        workingText.push(`${formatAttrString(key)}: ${value.toFixed(2)}°`);
-                        continue;
-                    }
-                    if (key === 'timestamp') {
-                        const tz = tzlookup(proximalNode.nearest.lat, proximalNode.nearest.lng);
-                        const date = new Date(value * 1000);
-                        const formattedDate = date.toLocaleString('en-US', {
-                            timeZone: tz,
-                            year: 'numeric', month: 'short', day: 'numeric',
-                            hour: '2-digit', minute: '2-digit', second: '2-digit'
-                        });
-                        workingText.push(`${formatAttrString(key)}: ${formattedDate}`);
-                    } else if (!['country', 'state', 'locality'].includes(key)) {
-                        workingText.push(`${formatAttrString(key)}: ${value}`);
-                    } 
+                if (value === null || config.attrRedundantTooltip.has(key)) continue;
+                if (key === "imageDate" && proximalNode.nearest.timestamp) continue;
+                if (['country', 'state', 'locality'].includes(key)) continue;
+                if (typeof value === "string" || typeof value === "number") {
+                    workingText.push(`${formatAttrString(key)}: ${formatValue(key, value)}`);
                 }
             }
-        
-            tooltip.innerHTML = workingText.join('<br>');
-            
-            if (tooltip.innerHTML) {
-                tooltip.style.visibility = 'visible';
-                tooltip.style.left = `${event.originalEvent.clientX + 10}px`;
-                tooltip.style.top = `${event.originalEvent.clientY + 10}px`;
-            } else {
-                tooltip.style.visibility = 'hidden';
-            }
+
+            this.tooltip.innerHTML = workingText.join('<br>');
+            this.tooltip.style.visibility = 'visible';
+            this.tooltip.style.left = `${event.originalEvent.clientX + 10}px`;
+            this.tooltip.style.top = `${event.originalEvent.clientY + 10}px`;
         };
 
         // External StreetView link handler
@@ -197,7 +157,6 @@ class SVMap {
         });
 
         this.map.on('zoom', () => {
-            console.log(this.map.getZoom());
             if (this.map.getZoom() < this.map.getMinZoom()) {
                 this.map.setZoom(this.map.getMinZoom());
             }
@@ -237,16 +196,14 @@ class SVMap {
         const avgPointsPerCell = Math.floor(cellCounts.reduce((sum, count) => sum + count, 0) / cellCounts.length);
 
         Object.entries(this.grid).forEach(([cellKey, indices]) => {
-            // Shuffle indices to randomize selection within each cell
             const shuffledIndices = this.shuffle([...indices]);
             
-            // Select up to avgPointsPerCell locations from each cell
             const selectedIndices = shuffledIndices.slice(0, avgPointsPerCell);
             
             selectedIndices.forEach(index => {
                 prioritizedLocations.push({
                     location: this.locations[index],
-                    priority: 1 / indices.length // Keep original priority for sorting
+                    priority: 1 / indices.length
                 });
             });
         });
@@ -255,35 +212,51 @@ class SVMap {
     }
 
     initialize() {
-        console.log("Before initialization:", this.locations.slice(0, 10));
-        this.filteredLocations = this.locations;
-        console.log("After assignment:", this.filteredLocations.slice(0, 10));
-        this.filterMap.forEach((filter) => {
-            this.filteredLocations = this.filter(this.filteredLocations, filter);
-            console.log("After filter:", filter, this.filteredLocations.slice(0, 10));
-        });
-        console.log("Before kdTree:", this.filteredLocations.slice(0, 10));
+        this.updateFilterSelect();
+        this.applyFilters();
         this.tree = new kdTree([...this.filteredLocations], distance, ['lat','lng']);
-        console.log("After kdTree:", this.filteredLocations.slice(0, 10));
         this.prioritizedLocations = this.getPrioritizedLocations();
         this.pixiOverlay.redraw();
+        this.updateInfoBox();
+        // this.fitToBounds();
     }
 
-    filter(locs, { filter, operator, value }) {
-        if(filter == null || value == null || filter == "" || value == ""){
-            return locs;
-        }
+    applyFilters() {
+        this.filteredLocations = this.locations;
+        const filters = this.getActiveFilters();
+        filters.forEach(filter => {
+            this.filteredLocations = this.filterLocations(this.filteredLocations, filter);
+        });
+    }
 
-        switch(operator) {
-            case '=':
-                return locs.filter((loc) => loc[filter] == value);
-            case '!=':
-                return locs.filter((loc) => loc[filter] != value);
-            case '>':
-                return locs.filter((loc) => loc[filter] > value);
-            case '<':
-                return locs.filter((loc) => loc[filter] < value);
-        }
+    getActiveFilters() {
+        const filterItems = this.filterContainer.getElementsByClassName('filter-item');
+        return Array.from(filterItems)
+            .map(item => ({
+                filter: item.querySelector('.filter').value,
+                operator: item.querySelector('.filter-operation').value,
+                value: item.querySelector('.filter-value').innerText.trim()
+            }))
+            .filter(filter => filter.filter && filter.value !== "");
+    }
+
+    filterLocations(locations, { filter, operator, value }) {
+        const numValue = parseFloat(value);
+        return locations.filter(loc => {
+            const locValue = loc[filter];
+            switch(operator) {
+                case '=':
+                    return locValue == value;
+                case '!=':
+                    return locValue != value;
+                case '>':
+                    return !isNaN(numValue) && locValue > numValue;
+                case '<':
+                    return !isNaN(numValue) && locValue < numValue;
+                default:
+                    return true;
+            }
+        });
     }
 
     proximalNode(event, range) {
@@ -306,13 +279,18 @@ class SVMap {
         const zoomFactor = 2 ** (9.5 - zoom); //TODO ?
         return zoomFactor;
     }
-
+    
+    /**
+     * Updates the info box with the current state of the map.
+     */
     updateInfoBox() {
         const headline = document.querySelector('#infoBox .headline');
         const subline = document.querySelector('#infoBox .subline');
 
         if (headline && subline) {
-            headline.textContent = `${this.json.name || filePath.split('\\').pop().split('.')[0]} - ${this.filteredLocations.length} locations`;
+            headline.innerHTML = `${this.json.name || filePath.split('\\').pop().split('.')[0]} - ${this.locations.length} locations` + 
+                (this.filteredLocations.length < this.locations.length ? 
+                ` <span style="color: #888888;">(${this.filteredLocations.length})</span>` : '');
             
             this.attributes = new Set();
             this.filteredLocations.forEach(loc => {
@@ -326,6 +304,9 @@ class SVMap {
         }
     }
 
+    /**
+     * Fits the map to the bounds of the filtered locations.
+     */
     fitToBounds() {
         if (this.filteredLocations.length > 0) {
             const bounds = L.latLngBounds(this.filteredLocations.map(loc => [loc.lat, loc.lng]));
@@ -333,9 +314,30 @@ class SVMap {
         }
     }
 
-    updateMap(newFilteredLocations) { // ???
-        this.filteredLocations = newFilteredLocations;
-        this.updateInfoBox();
-        this.fitToBounds();
+    /**
+     * Updates the filter select dropdowns with the current map attributes.
+     */
+    updateFilterSelect() {
+        const filterItems = this.filterContainer.getElementsByClassName('filter-item');
+        this.filterMap = Array.from(filterItems, item => ({
+            filter: formatAttrString(item.querySelector('.filter')?.value),
+            operator: item.querySelector('.filter-operation')?.value,
+            value: item.querySelector('.filter-value')?.innerText
+        }));
+
+        const filterSelects = this.filterContainer.getElementsByClassName('filter');
+        if (this.cachedAttributesHTML === undefined) {
+            this.cachedAttributesHTML = Array.from(this.attributes)
+                .map(attr => `<option value="${attr}">${formatAttrString(attr)}</option>`)
+                .join('');
+        }
+
+        Array.from(filterSelects).forEach(select => {
+            const currentValue = select.value;
+            select.innerHTML = this.cachedAttributesHTML;
+            if (currentValue && Array.from(select.options).some(option => option.value === currentValue)) {
+                select.value = currentValue;
+            }
+        });
     }
 }
