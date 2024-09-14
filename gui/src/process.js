@@ -106,6 +106,9 @@ document.addEventListener('DOMContentLoaded', function() {
             </select>
             <select class="filter-operation">
                 <option value="=">=</option>
+                <option value="!=">!=</option>
+                <option value=">=">>=</option>
+                <option value="<="><=</option>
                 <option value=">">></option>
                 <option value="<"><</option>
             </select>
@@ -223,3 +226,40 @@ window.electronAPI.onPythonScriptPid((event, pid) => {
     processId = pid;
     console.log('Python script PID:', pid);
 });
+
+
+
+// FPS Counter
+const fpsCounter = document.createElement('div');
+fpsCounter.id = 'fpsCounter';
+fpsCounter.style.position = 'fixed';
+fpsCounter.style.top = '10px';
+fpsCounter.style.left = '10px';
+fpsCounter.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+fpsCounter.style.color = 'white';
+fpsCounter.style.padding = '5px 10px';
+fpsCounter.style.borderRadius = '5px';
+fpsCounter.style.fontSize = '14px';
+fpsCounter.style.zIndex = '1000';
+document.body.appendChild(fpsCounter);
+
+let frameCount = 0;
+let lastTime = performance.now();
+let fps = 0;
+
+function updateFPS() {
+    frameCount++;
+    const currentTime = performance.now();
+    const elapsedTime = currentTime - lastTime;
+
+    if (elapsedTime >= 1000) {
+        fps = Math.round((frameCount * 1000) / elapsedTime);
+        fpsCounter.textContent = `FPS: ${fps}`;
+        frameCount = 0;
+        lastTime = currentTime;
+    }
+
+    requestAnimationFrame(updateFPS);
+}
+
+updateFPS();
