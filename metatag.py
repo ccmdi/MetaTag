@@ -89,8 +89,9 @@ class ArgParser:
 
         # Cache
         if self.args.command == 'tag' or self.args.command == 'extract':
+            print(str(FOLDERS['base']['path']))
             self.cached_file = (FOLDERS['meta']['path'] / self.filepath.name).absolute()
-            if str(FOLDERS['base']['path']) in str(self.filepath.absolute())  and self.cached_file.exists() and ((hasattr(self.args, 'no_cache_in',) and not self.args.no_cache_in) or not hasattr(self.args, 'no_cache_in')):
+            if self.cached_file.exists() and ((hasattr(self.args, 'no_cache_in',) and not self.args.no_cache_in) or not hasattr(self.args, 'no_cache_in')):
                 print("Found cached file")
                 self.cached = True
             else:

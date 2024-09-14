@@ -5,7 +5,7 @@
         "tagged": "./maps/tagged",
         "views": "./views"
     },
-    "compressFile": false,
+    "compressFile": true,
     "keepUnknownFields": false,
     "mapMakingAppStyles": true,
     "debug": false,
