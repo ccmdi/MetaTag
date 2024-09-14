@@ -19,8 +19,6 @@ class SVMap {
         
         // Performance caps
         this.maxMarkers = 30000;
-        // this.gridSize = 1; // Grid size in degrees
-        // this.createGrid();
 
         const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
 
@@ -176,7 +174,7 @@ class SVMap {
         
         this.filterMap.forEach(filter => {
             if(Object.values(filter).some(val => val === undefined || val === null || val === '')) return;
-            filter.filter = filter.filter.toLowerCase();
+            filter.filter = unformatAttrString(filter.filter);
             this.filteredLocations = this.filterLocations(this.filteredLocations, filter);
         });
     }
