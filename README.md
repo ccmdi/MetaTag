@@ -55,7 +55,7 @@ If you are running `metatag.py`, this is the list of arguments that are presentl
 * `-u --clouds` Cloud cover classification (Overcast, Mostly Cloudy, Partly Cloudy, Clear)
 * `-U --CLOUDS` Cloud cover exact (% rounded to nearest integer)
 * `-p --precipitation` Precipitation (mm)
-* `-s --snow` Snow depth (m)
+* `-w --snow` Snow depth (m)
 * `-e --elevation` Elevation (m)
 * `-D --drivingdirection` Driving direction (°)
 * `-H --heading` Orient heading to \[drivingdirection, solar, `<heading>,<pitch>`\]
