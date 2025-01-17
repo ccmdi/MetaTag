@@ -68,22 +68,28 @@ class ArgParser:
         self.args_by_group = {}
 
         # Create subparsers
-        self.subparsers = self.parser.add_subparsers(dest='command', required=True)
+        self.subparsers = self.parser.add_subparsers(dest='command')
 
         # Tag subparser (main process)
-        self.tag_parser = self.subparsers.add_parser('tag', help='Tag a file')
+        self.tag_parser = self.subparsers.add_parser('tag', help='Tag a file', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         self.add_tag_arguments(self.tag_parser)
 
-        self.delete_parser = self.subparsers.add_parser('delete', help='Delete a file')
+        self.delete_parser = self.subparsers.add_parser('delete', help='Delete a file', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         self.add_delete_arguments(self.delete_parser)
 
-        self.clear_parser = self.subparsers.add_parser('clear', help='Clear tags for meta file')
+        self.clear_parser = self.subparsers.add_parser('clear', help='Clear tags for meta file', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         self.add_clear_arguments(self.clear_parser)
         
-        self.extract_parser = self.subparsers.add_parser('extract', help='Extract attributes as table')
+        self.extract_parser = self.subparsers.add_parser('extract', help='Extract attributes as table', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         self.add_extract_arguments(self.extract_parser)
 
+        self.parser.add_argument('-v', '--version', action='store_true', help='Version of project')
+
         self.args = self.parser.parse_args()
+        if self.args.version or not self.args.command:
+            self.filepath = Path(".")
+            return
+        
         self.userparser =  self.subparsers.choices[self.args.command]
         self.filepath = Path(self.args.file)
 
@@ -208,7 +214,7 @@ class MetaTag:
                     lat, lng = float(item['lat']), float(item['lng'])
                     tags = []
 
-                    if self.arg_parser.group_true('temporal'):
+                    if self.arg_parser.args.date or self.arg_parser.args.time:
                         unix_time = float(item['timestamp'])
                         if not (now - (20 * 365 * 24 * 60 * 60) <= unix_time <= now):
                             raise ValueError(f"Invalid UNIX time at line {i+2}: {unix_time}")
@@ -216,6 +222,11 @@ class MetaTag:
                         timestamp = self.tz_datestring(lat, lng, unix_time, self.args.round)
                         tags.append(timestamp)
                         self.attr_sets['dates'].add(timestamp)
+                    elif self.arg_parser.args.month or self.arg_parser.args.year:
+                        if item.get('imageDate'):
+                            tags.append(item.get('imageDate'))
+                        elif item.get('extra').get('panoDate'):
+                            tags.append(item.get('extra').get('panoDate'))
 
                     if self.arg_parser.group_true('geographical'):
                         tags.extend(filter(None, [
@@ -775,7 +786,7 @@ def main():
     FOLDERS['meta']['exists'] = FOLDERS['meta']['files'].exists()
     FOLDERS['tagged']['exists'] = len(FOLDERS['tagged']['files']) > 0
     FOLDERS['views']['exists'] = len(FOLDERS['views']['files']) > 0
-
+    
     if argparser.args.command == 'tag':
         if not any(getattr(argparser.args, k) for k in argparser.SHORT_ARGS) and not argparser.args.heading and not argparser.args.drivingdirection:
             raise ValueError("At least one output must be specified")
@@ -798,8 +809,9 @@ def main():
         mfparser = MetaFetchParser(map_obj, argparser, CONFIG['panoFetchRadius'], CONFIG['panoFetchChunkSize'])
         asyncio.run(mfparser.bulk_parse(mfparser.fetch_meta))
 
-        if argparser.group_true('temporal') or argparser.group_true('terrestrial') or argparser.args.heading == 'solar':
+        if not (argparser.args.month or argparser.args.year) and (argparser.args.date or argparser.args.time) or argparser.group_true('terrestrial') or argparser.args.heading == 'solar':
             logging.info("Temporal parsing")
+
             try:
                 asyncio.run(mfparser.bulk_parse(mfparser.timestamp))
             except Exception as e:
@@ -952,6 +964,10 @@ def main():
                 writer.writerow(row)
 
         print(f"Results written to {output_filename}")
+
+    elif argparser.args.version:
+        from version import __version__
+        print(__version__)
 
     logging.info("Finished process")
 

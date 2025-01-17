@@ -20,15 +20,16 @@ class SVMap {
         // Performance caps
         this.maxMarkers = 30000;
 
-        const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
+        const worldBounds = L.latLngBounds(L.latLng(-90, -Infinity), L.latLng(90, Infinity));
 
         this.map = L.map('map', {
             zoomControl: false,
             attributionControl: false,
+            minZoom: 2,
+            bounceAtZoomLimits: false,
+            worldCopyJump: true,
             maxBounds: worldBounds,
-            maxBoundsViscosity: 1.0,
-            minZoom: 3,
-            bounceAtZoomLimits: false
+            maxBoundsViscosity: 1.0
         });
 
         L.control.attribution({
@@ -38,7 +39,7 @@ class SVMap {
 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}' + (L.Browser.retina ? '@2x.png' : '.png'), {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            noWrap: true
+            // Remove the noWrap option
         }).addTo(this.map);
 
         this.updateInfoBox();
@@ -55,23 +56,26 @@ class SVMap {
 
             const bounds = this.map.getBounds();
             const visibleLocations = this.filteredLocations.filter(loc => 
-                bounds.contains(L.latLng(loc.lat, loc.lng))
+                this.isLocationVisible(bounds, loc)
             );
 
             const locationsToRender = visibleLocations.slice(0, this.maxMarkers);
             
             locationsToRender.forEach((loc) => {
-                const markerCoords = project([loc.lat, loc.lng]);
-                const marker = new PIXI.Sprite(markerTexture);
-                
-                marker.interactiveChildren = false;
-                marker.anchor.set(0.5, 1);
-                marker.position.set(markerCoords.x, markerCoords.y);
+                const wrappedLocs = this.getWrappedLocations(loc);
+                wrappedLocs.forEach(wrappedLoc => {
+                    const markerCoords = project([wrappedLoc.lat, wrappedLoc.lng]);
+                    const marker = new PIXI.Sprite(markerTexture);
+                    
+                    marker.interactiveChildren = false;
+                    marker.anchor.set(0.5, 1);
+                    marker.position.set(markerCoords.x, markerCoords.y);
     
-                
-                marker.scale.set(this.markerScaleSize(this.map));
+                    
+                    marker.scale.set(this.markerScaleSize(this.map));
 
-                this.pixiContainer.addChild(marker);
+                    this.pixiContainer.addChild(marker);
+                });
             });
     
             renderer.render(container);
@@ -146,18 +150,14 @@ class SVMap {
 
         this.pixiOverlay.addTo(this.map);
 
-        this.map.on('drag', () => {
-            this.map.panInsideBounds(worldBounds, { animate: false });
-        });
+        // this.map.on('drag', () => {
+        //     this.map.panInsideBounds(worldBounds, { animate: false });
+        // });
 
         this.map.on('zoom', () => {
             if (this.map.getZoom() < this.map.getMinZoom()) {
                 this.map.setZoom(this.map.getMinZoom());
             }
-        });
-
-        this.map.on('drag', () => {
-            this.map.panInsideBounds(worldBounds, { animate: false });
         });
     }
 
@@ -280,7 +280,7 @@ class SVMap {
             if (distance < minDistance) {
                 minDistance = distance;
                 closestMarker = marker;
-                nearestLocation = this.filteredLocations[index];
+                nearestLocation = this.filteredLocations[Math.floor(index / 3)]; // Divide by 3 because each location can have up to 3 markers due to wrapping
             }
         });
     
@@ -366,5 +366,21 @@ class SVMap {
             const bounds = L.latLngBounds(locations.map(loc => [loc.lat, loc.lng]));
             this.map.fitBounds(bounds);
         }
+    }
+
+    isLocationVisible(bounds, loc) {
+        const wrappedLocs = this.getWrappedLocations(loc);
+        return wrappedLocs.some(wrappedLoc => bounds.contains(L.latLng(wrappedLoc.lat, wrappedLoc.lng)));
+    }
+
+    getWrappedLocations(loc) {
+        const worldWidth = 360;
+        const lng = loc.lng;
+        const wrappedLocs = [
+            { lat: loc.lat, lng: lng },
+            { lat: loc.lat, lng: lng + worldWidth },
+            { lat: loc.lat, lng: lng - worldWidth }
+        ];
+        return wrappedLocs;
     }
 }
