@@ -60,8 +60,11 @@ if __name__ == "__main__":
         key = (item['lat'], item['lng'])
         if key in results_dict:
             item['pop'] = results_dict[key]
-            item['extra']['tags'] = []
-            if 'extra' in item and 'tags' in item['extra'] and results_dict[key] != "No Data":
+            if 'extra' not in item:
+                item['extra'] = {}
+            if 'tags' not in item['extra']:
+                item['extra']['tags'] = []
+            if results_dict[key] != "No Data":
                 item['extra']['tags'].append("@POP: " + str(round(item['pop'], 1)))
 
     with open('output.json', 'w') as f:

@@ -51,8 +51,8 @@ FOLDERS = {
 }
 DEBUG = CONFIG['debug']
 if DEBUG:
-    if DEBUG == True: DEBUG = 0
-    logging.basicConfig(level=CONFIG['debug'], format='%(asctime)s - %(levelname)s - %(message)s')
+    log_level = logging.DEBUG if DEBUG is True else DEBUG
+    logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 for folder in FOLDERS.values():
@@ -778,7 +778,7 @@ def main():
     argparser = ArgParser()
 
     FOLDERS['base']['files'] = argparser.filepath.absolute()
-    FOLDERS['meta']['files'] = Path(f"{FOLDERS['meta']['path']}\{argparser.filepath.stem}.json")
+    FOLDERS['meta']['files'] = FOLDERS['meta']['path'] / f"{argparser.filepath.stem}.json"
     FOLDERS['tagged']['files'] = list(Path(FOLDERS['tagged']['path']).glob(f"{argparser.filepath.stem}-*.json"))
     FOLDERS['views']['files'] = list(Path(FOLDERS['views']['path']).glob(f"{argparser.filepath.stem}-*.csv"))
 
@@ -875,7 +875,7 @@ def main():
         
         for file in deletion_list:
             try:
-                # os.remove(file)
+                os.remove(file)
                 print(f"Deleted {file}")
             except FileNotFoundError as e:
                 logging.error(f"Failed to delete: {e}")

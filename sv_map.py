@@ -49,8 +49,8 @@ class SVMap:
 
                         if 'heading' not in self.locs[-1]:
                             self.locs[-1]['heading'] = 0
-                    
-                    except:
+
+                    except (ValueError, IndexError, KeyError):
                         continue
 
                 self.data = {'name': Path(file).stem, "customCoordinates": self.locs}
@@ -68,8 +68,8 @@ class SVMap:
             with open(file, 'w') as f:
                 json.dump(self.data, f, indent = None if CONFIG['compressFile'] else 4)
             print("Saved to " + str(file))
-        except:
-             print("Failed to save to " + str(file))
+        except (IOError, OSError, PermissionError) as e:
+             print(f"Failed to save to {file}: {e}")
     
     def purge(self, exclude=CRITICAL_FIELDS):
         """
@@ -138,7 +138,7 @@ class Classifier:
                 return "West"
             else:
                 return "North-West"
-        except:
+        except (TypeError, ValueError):
             return None
 
     def sun_event(altitude, azimuth):
